@@ -1,6 +1,6 @@
 # limit-lens: living plan
 
-Status line: **v0.3 with the single command `/limit-lens:analyze` (report, model routing as a CLAUDE.md rule, settings fixes, other suggestions); three review rounds fixed, 164 tests green, headless run passes. Pending: the author trying it interactively, then the go-ahead to make the repo public** (2026-10-25).
+Status line: **v0.3: `/limit-lens:analyze` with a summary, text bar charts and a browser dashboard, then model routing (CLAUDE.md rule), settings fixes with "What it is" and other suggestions; three review rounds fixed, 174 tests green, headless run passes. Pending: the author trying it interactively, then the go-ahead to make the repo public** (2026-10-25).
 
 ## Goal
 
@@ -121,3 +121,13 @@ Decisions:
 ## Review of the analyze command (2026-10-25)
 
 Two Sonnet finders (the CLAUDE.md writes, the flow and its docs) with an Opus skeptic per finding: 8 confirmed, plus 1 checked by hand; all fixed with tests in `tests/review-analyze.test.mjs`. CLAUDE.md that is not UTF-8 is refused instead of rewritten; revert keeps the user's lines apart, deletes a CLAUDE.md that apply created, writes CLAUDE.md only after settings succeed (and puts settings back if CLAUDE.md then fails), needs valid settings only when the experiment changed them, and notes a routing mention left outside the block. The goal check-in tip and the `/compact` advice no longer vanish with the suggestion a question covers; habits whose finding is not shown appear under "Habits"; `analyze`, `plan`, `apply`, `compare` and `revert` refuse `--days`, `--project` and `--anonymize` instead of ignoring them.
+
+## Charts and a dashboard (2026-10-25)
+
+Why: the author found the flow "too raw": it should summarize what it is about to do, show more, and draw it ("charts, bars, something nice on screen").
+
+Decisions:
+
+1. **Text bars in the conversation.** The report's "At a glance" block draws spend by day, where it goes, by model, source and effort, and the biggest projects with Unicode eighth blocks (`scripts/lib/charts.mjs`), all bars in one column, values printed beside them. Skills show it verbatim inside a code block.
+2. **A dashboard page.** `analyze --open` writes `<config dir>/limit-lens/dashboard.html` (`scripts/lib/dashboard.mjs`) and opens it with the system's default app; `LIMIT_LENS_NO_OPEN=1` turns the opening off. One self-contained file, nothing loaded from the network, built with the dataviz method: one hero figure, share cards with meters, columns for spend by day (busiest day and today labelled, tooltips, a table view), single-hue bar lists with every value printed, finding cards, fix cards with "What it is", a savings chart in a second hue (validated with the palette script; the light aqua needs visible labels, which every bar has), light and dark. Every string is HTML-escaped; names from disk are already reduced to plain characters.
+3. **A summary first.** analyze opens with "## Summary" (what eats the limit, biggest projects, how many questions come next, the largest estimated saving, the dashboard path); the skill says in two sentences what is about to happen before running, and sums up the chosen changes before applying.
