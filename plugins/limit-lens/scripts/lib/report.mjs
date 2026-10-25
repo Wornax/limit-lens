@@ -131,9 +131,18 @@ function questionLines(fixes, settingsFile) {
   return lines;
 }
 
-function historyLines({ last, undo, warning }) {
+// One applied change, in a line.
+export const describeChange = (c) => (c.kind === 'memory' ? 'the model-routing rule in `CLAUDE.md`' : `\`${c.path.join('.')}\` = \`${JSON.stringify(c.after)}\``);
+
+const changesInEffect = (active) => active.reduce((s, e) => s + e.changes.length, 0);
+
+function historyLines({ active = [], last, undo, warning }) {
   const lines = [];
-  if (last) {
+  if (active.length) {
+    lines.push('', '## Changes in effect', '');
+    for (const e of active) lines.push(`- \`${e.id}\`, applied ${e.appliedAt.slice(0, 16).replace('T', ' ')} UTC: ${e.changes.map(describeChange).join('; ')}.`);
+    lines.push('', 'Compare them after a few days of normal use with `/limit-lens:analyze compare`.');
+  } else if (last) {
     const fixesList = last.changes.map((c) => `\`${c.fixId}\``).join(', ');
     lines.push('', '## Last experiment', '', `- \`${last.id}\`, applied ${last.appliedAt.slice(0, 16).replace('T', ' ')} UTC: ${fixesList}${last.revertedAt ? ' (reverted)' : ''}. Compare it after a few days of normal use.`);
   }
@@ -149,12 +158,12 @@ function historyLines({ last, undo, warning }) {
 }
 
 // The fix plan: the diagnosis first, then one question per fix or per group of alternatives.
-export function renderPlan({ report, found = [], fixes, habits, settingsFile, last, undo, warning }) {
+export function renderPlan({ report, found = [], fixes, habits, settingsFile, last, undo, active = [], warning }) {
   const lines = ['# limit-lens: fixes you can apply', ''];
   if (report) lines.push(...diagnosisLines(report, found));
   lines.push(...questionLines(fixes, settingsFile));
   if (habits.length) lines.push('', '## Habits (only the user can do these)', '', ...habits.map((h) => `- ${h}`));
-  lines.push(...historyLines({ last, undo, warning }));
+  lines.push(...historyLines({ active, last, undo, warning }));
   return lines.join('\n') + '\n';
 }
 
@@ -190,7 +199,7 @@ function suggestionLines(found, fixes, habits) {
 }
 
 // What analyze found and what happens next, before the details.
-function summaryLines(r, found, fixes, dashboard) {
+function summaryLines(r, found, fixes, dashboard, active = []) {
   const total = r.totals.cost;
   const lines = ['## Summary', ''];
   if (found.length) lines.push(`- **What eats your limit:** ${found.slice(0, 3).map((f) => `${f.title} (${pct(f.cost, total)})`).join(', ')}. These overlap.`);
@@ -203,6 +212,8 @@ function summaryLines(r, found, fixes, dashboard) {
   } else {
     lines.push('- **What happens next:** no fix applies right now, so nothing is asked; the other suggestions below are yours to try.');
   }
+  const inEffect = changesInEffect(active);
+  if (inEffect) lines.push(`- **Already in effect:** ${inEffect} change${inEffect === 1 ? '' : 's'} from earlier runs ${inEffect === 1 ? 'is' : 'are'} in effect, listed under "Changes in effect".`);
   const best = fixes.filter((f) => f.savings?.weekly != null).sort((a, b) => b.savings.weekly - a.savings.weekly)[0];
   if (best) lines.push(`- **Largest estimated saving:** about ${usd(best.savings.weekly)} per week, from "${best.title}" (each fix alone; the estimates do not add up).`);
   if (dashboard) lines.push(`- **Dashboard:** \`${dashboard.file}\`, with charts of everything below${dashboard.opened ? ', opened in your browser' : ''}.`);
@@ -212,10 +223,10 @@ function summaryLines(r, found, fixes, dashboard) {
 
 // `limit-lens analyze`: a summary, the report, the questions (the routing rule first), the suggestions no
 // question covers, and the history of applied changes.
-export function renderAnalyze({ report, found, fixes, habits = [], settingsFile, last, undo, warning, searched = [], dashboard = null }) {
-  const head = renderMarkdown(report, found, { searched, withFixes: false, summary: report.totals.requests ? summaryLines(report, found, fixes, dashboard) : [] });
+export function renderAnalyze({ report, found, fixes, habits = [], settingsFile, last, undo, active = [], warning, searched = [], dashboard = null }) {
+  const head = renderMarkdown(report, found, { searched, withFixes: false, summary: report.totals.requests ? summaryLines(report, found, fixes, dashboard, active) : [] });
   if (!report.totals.requests) return head;
-  const lines = ['', '## Questions', '', ...questionLines(fixes, settingsFile), ...suggestionLines(found, fixes, habits), ...historyLines({ last, undo, warning })];
+  const lines = ['', '## Questions', '', ...questionLines(fixes, settingsFile), ...suggestionLines(found, fixes, habits), ...historyLines({ active, last, undo, warning })];
   return head + lines.join('\n') + '\n';
 }
 

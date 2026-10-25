@@ -68,7 +68,7 @@ ${withTitle ? `<h4><code>${esc(f.id)}</code> ${esc(f.title)}</h4>` : ''}
 </div>`;
 }
 
-export function renderDashboard({ report: r, found, fixes, habits = [], settingsFile, last = null, undo = null, warning = null, generatedAt = Date.now() }) {
+export function renderDashboard({ report: r, found, fixes, habits = [], settingsFile, last = null, undo = null, active = [], warning = null, generatedAt = Date.now() }) {
   const total = r.totals.cost;
   const glance = Object.fromEntries(glanceData(r, { projects: 5 }).map((s) => [s.id, s]));
   const share = (x) => `${pct(x.cost, total)}  ${usd(x.cost)}`;
@@ -99,11 +99,15 @@ ${q.options.map((f) => option(f, maxSaving, q.options.length > 1)).join('')}
   const sessions = r.topSessions.slice(0, 5).map((s, i) => `<tr><td>${esc(clean(s.project))}</td><td><code>${esc(sessionLabel(s.sessionId, i, false))}</code></td><td>${esc(ENTRYPOINTS[s.entrypoint] || clean(s.entrypoint))}</td><td>${esc(usd(s.cost))}</td><td>${s.requests.toLocaleString('en-US')}</td><td>${esc(tokens(s.avgPromptTokens))}</td><td>${esc(pct(s.rereadCost, s.cost))}</td></tr>`).join('');
 
   const history = [];
-  if (last) history.push(`<p>Last change: <code>${esc(last.id)}</code>, applied ${esc(last.appliedAt.slice(0, 16).replace('T', ' '))} UTC: ${last.changes.map((c) => `<code>${esc(c.fixId)}</code>`).join(', ')}${last.revertedAt ? ' (reverted)' : ''}.</p>`);
+  const when = (iso) => esc(iso.slice(0, 16).replace('T', ' '));
+  const change = (c) => (c.kind === 'memory' ? `the model-routing rule in <code>${esc(c.file)}</code>` : `<code>${esc(c.path.join('.'))}</code> = ${show(c.after)}`);
+  for (const e of active) history.push(`<div class="applied"><p><code>${esc(e.id)}</code> <span class="muted">applied ${when(e.appliedAt)} UTC</span></p><ul>${e.changes.map((c) => `<li>${change(c)}</li>`).join('')}</ul></div>`);
+  if (!active.length && last) history.push(`<p>Last change: <code>${esc(last.id)}</code>, applied ${when(last.appliedAt)} UTC: ${last.changes.map((c) => `<code>${esc(c.fixId)}</code>`).join(', ')}${last.revertedAt ? ' (reverted)' : ''}.</p>`);
+  const inEffect = active.reduce((s, e) => s + e.changes.length, 0);
   if (undo) {
-    history.push(`<p><code>/limit-lens:analyze revert</code> would undo <code>${esc(undo.id)}</code>:</p><ul>${undo.changes.map((c) => (c.kind === 'memory'
+    history.push(`<div class="applied"><p><code>/limit-lens:analyze revert</code> would undo <code>${esc(undo.id)}</code>:</p><ul>${undo.changes.map((c) => (c.kind === 'memory'
       ? `<li><code>${esc(c.file)}</code>: the model-routing rule is removed</li>`
-      : `<li><code>${esc(c.path.join('.'))}</code> → ${c.hadKey ? show(c.restore) : 'removed'}</li>`)).join('')}</ul>`);
+      : `<li><code>${esc(c.path.join('.'))}</code> → ${c.hadKey ? show(c.restore) : 'removed'}</li>`)).join('')}</ul></div>`);
   }
   if (warning) history.push(`<p class="badge warn"><span class="icon" aria-hidden="true">!</span>${esc(warning)}</p>`);
 
@@ -196,6 +200,8 @@ th { color: var(--muted); font-weight: 600; }
 .what { background: var(--page); border-radius: 8px; padding: 12px 14px; color: var(--ink); }
 .option { border-top: 1px solid var(--grid); padding-top: 14px; margin-top: 14px; }
 .option:first-of-type { border-top: 0; margin-top: 4px; padding-top: 0; }
+.applied + .applied { border-top: 1px solid var(--grid); margin-top: 12px; padding-top: 12px; }
+.applied ul { margin: 6px 0 0; padding-left: 20px; color: var(--ink-2); }
 .badge { display: inline-flex; align-items: center; gap: 6px; font-size: 13px; font-weight: 600; color: var(--ink-2); border: 1px solid var(--border); border-radius: 999px; padding: 2px 10px 2px 4px; margin-bottom: 10px; }
 .badge .icon { width: 18px; height: 18px; border-radius: 50%; display: inline-grid; place-items: center; font-size: 11px; color: #0b0b0b; }
 .badge.good .icon { background: var(--good); color: #fff; }
@@ -227,7 +233,7 @@ footer ul { padding-left: 20px; }
 <p class="hero-label">API-equivalent spend</p>
 <p class="hero-value">${esc(usd(total))}</p>
 <p class="muted">${r.totals.requests.toLocaleString('en-US')} requests in ${r.totals.sessions.toLocaleString('en-US')} sessions${r.outside.cost ? `, plus ${esc(usd(r.outside.cost))} of plugin calls outside transcripts` : ''}. On a subscription this is not a bill: it shows how your usage limit was spent.</p>
-<p class="next">${qs.length ? `<strong>Next:</strong> Claude asks you about ${qs.length} fix${qs.length === 1 ? '' : 'es'} in the conversation, shown below. Nothing changes until you choose; every change is backed up, and <code>/limit-lens:analyze revert</code> undoes it.` : '<strong>Next:</strong> no fix applies right now. The suggestions at the end are yours to try.'}</p>
+<p class="next">${qs.length ? `<strong>Next:</strong> Claude asks you about ${qs.length} fix${qs.length === 1 ? '' : 'es'} in the conversation, shown below. Nothing changes until you choose; every change is backed up, and <code>/limit-lens:analyze revert</code> undoes it.` : `<strong>Next:</strong> no fix applies right now${inEffect ? `: ${inEffect} change${inEffect === 1 ? '' : 's'} from earlier runs ${inEffect === 1 ? 'is' : 'are'} already in effect, listed at the end` : ''}. The suggestions below are yours to try.`}</p>
 </section>
 
 <div class="tiles">
@@ -265,7 +271,7 @@ ${suggestions.length ? `<h2 class="section-title">Other suggestions</h2>
 ${sessions ? `<h2 class="section-title">Costliest sessions</h2>
 <section class="card scroll"><table><thead><tr><th>Project</th><th>Session</th><th>From</th><th>Spend</th><th>Requests</th><th>Avg context</th><th>Re-read</th></tr></thead><tbody>${sessions}</tbody></table><p class="muted" style="margin-top:8px">Main conversation only, not its subagents.</p></section>` : ''}
 
-${history.length ? `<h2 class="section-title">Changes already applied</h2><section class="card">${history.join('')}</section>` : ''}
+${history.length ? `<h2 class="section-title">Changes in effect</h2><p class="note">What limit-lens changed earlier and is still in place, newest first. <code>/limit-lens:analyze compare</code> measures it; <code>/limit-lens:analyze revert</code> undoes the newest.</p><section class="card">${history.join('')}</section>` : ''}
 
 <footer>
 <p><strong>Not counted</strong></p>

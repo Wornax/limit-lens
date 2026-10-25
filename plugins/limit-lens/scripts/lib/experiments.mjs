@@ -48,7 +48,8 @@ export function findExperiment(configDir, id = null) {
   return id ? experiments.find((e) => e.id === id) || null : experiments[experiments.length - 1] || null;
 }
 
-// What `plan` shows about past changes: the latest experiment, and what a revert would restore.
+// What `plan` shows about past changes: every experiment still in effect (newest first), the latest one,
+// and what a revert would restore.
 // A damaged state file is reported here as a warning instead of stopping the plan.
 export function planHistory(configDir) {
   try {
@@ -61,9 +62,14 @@ export function planHistory(configDir) {
         ? { fixId: c.fixId, kind: 'memory', file: c.file }
         : { fixId: c.fixId, path: c.path, restore: c.hadKey ? c.before : null, hadKey: c.hadKey })),
     };
-    return { last: experiments[experiments.length - 1] || null, undo: undo || null, warning: null };
+    const active = [...experiments].reverse().filter((e) => !e.revertedAt).map((e) => ({
+      id: e.id,
+      appliedAt: e.appliedAt,
+      changes: e.changes.map((c) => (c.kind === 'memory' ? { fixId: c.fixId, kind: 'memory', file: c.file } : { fixId: c.fixId, path: c.path, after: c.after })),
+    }));
+    return { last: experiments[experiments.length - 1] || null, undo: undo || null, active, warning: null };
   } catch (e) {
-    return { last: null, undo: null, warning: e.message };
+    return { last: null, undo: null, active: [], warning: e.message };
   }
 }
 

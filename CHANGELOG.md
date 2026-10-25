@@ -10,6 +10,7 @@
 - Charts: the report draws spend by day, where it goes, by model, source and effort, and the biggest projects as text bars ("At a glance"); analyze opens with a "Summary" (what eats the limit, what happens next, the largest estimated saving) and, before applying, Claude sums up the chosen changes.
 - Dashboard: `analyze --open` writes `<config dir>/limit-lens/dashboard.html`, one self-contained page (no network, light and dark) with the spend, share cards, spend by day, bar charts, findings, every fix with what it is and its estimated saving, other suggestions and the costliest sessions, and opens it in the default browser (`LIMIT_LENS_NO_OPEN=1` turns the opening off).
 - The report counts spend per local day (`byDay` in `--json`).
+- "Changes in effect": the plan, analyze and the dashboard list every change limit-lens made that is still in place, newest first, setting by setting; when no fix applies, the summary says how many changes from earlier runs are already in effect.
 - `/limit-lens:report` runs only when you type it, for a read-only or shareable report, and lists the biggest projects.
 - `limit-lens analyze [--json]` on the command line; `plan` remains for scripts.
 - The plan opens with what is eating your limit: the biggest lenses, the biggest projects, and plugin calls outside transcripts.
