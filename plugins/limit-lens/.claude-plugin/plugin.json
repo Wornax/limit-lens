@@ -1,0 +1,10 @@
+{
+  "name": "limit-lens",
+  "version": "0.1.0",
+  "description": "Shows where your Claude Code usage limit goes and the fix for each sink. Reads local transcripts with a zero-dependency Node script, so finding out costs no tokens. Includes a model-routing skill.",
+  "author": {
+    "name": "Wornax"
+  },
+  "license": "MIT",
+  "keywords": ["usage", "tokens", "cost", "limits", "optimization", "cache", "effort", "subagents"]
+}

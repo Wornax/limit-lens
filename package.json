@@ -1,0 +1,15 @@
+{
+  "name": "limit-lens",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Claude Code plugin that shows where your usage limit goes and how to spend less.",
+  "type": "module",
+  "license": "MIT",
+  "engines": {
+    "node": ">=18"
+  },
+  "scripts": {
+    "test": "node --test test/",
+    "report": "node plugins/limit-lens/scripts/limit-lens.mjs"
+  }
+}

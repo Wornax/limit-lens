@@ -1,0 +1,7 @@
+node_modules/
+*.log
+.DS_Store
+# Never commit real transcripts or reports generated from them.
+local/
+*.report.md
+*.report.json

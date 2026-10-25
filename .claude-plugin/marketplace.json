@@ -1,0 +1,14 @@
+{
+  "name": "limit-lens",
+  "description": "Spend less of your Claude Code usage limit: see where it goes, then fix it.",
+  "owner": {
+    "name": "Wornax"
+  },
+  "plugins": [
+    {
+      "name": "limit-lens",
+      "source": "./plugins/limit-lens",
+      "description": "Shows where your Claude Code usage limit goes (model and effort, re-reading context, cache rebuilds, subagents, loops, plugins) and the fix for each. Includes a model-routing skill."
+    }
+  ]
+}
