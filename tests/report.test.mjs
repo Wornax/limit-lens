@@ -73,7 +73,7 @@ test('an empty window says so and where it looked', async () => {
   const r = await analyze({ projectsDirs: [projects], now: NOW, days: 7, securityLog: null });
   const md = renderMarkdown(r, findings(r), { searched: [projects] });
   assert.match(md, /No Claude Code usage found/);
-  assert.ok(md.includes(projects));
+  assert.ok(md.includes(JSON.stringify(projects).slice(1, -1))); // printed escaped
 });
 
 test('the CLI prints markdown by default and JSON with --json', () => {

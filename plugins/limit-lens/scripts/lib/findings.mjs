@@ -62,6 +62,7 @@ export function findings(r) {
         'Run agents on a smaller model: `"env": { "CLAUDE_CODE_SUBAGENT_MODEL": "sonnet" }` in settings.json sets the default; add `"CLAUDE_CODE_SUBAGENT_MODEL_FORCE": "1"` to apply it to every subagent, teammate and workflow agent (Claude Code 2.1.257+).',
         'Give custom agents a `model:` and an `effort:` in their frontmatter.',
         'Keep agent tasks short and scoped: an agent that makes hundreds of tool calls re-reads its own growing context on every one.',
+        'Let long-running custom agents compact earlier: `autoCompactWindow: 200000` in their frontmatter (a plain integer, Claude Code 2.1.296+).',
         'In workflows, give each agent the smallest model that can do its step (see `/limit-lens:model-routing`).',
       ],
       docs: [`${DOCS}/sub-agents#choose-a-model`],
@@ -117,9 +118,9 @@ export function findings(r) {
       cost: rebuildCost,
       evidence,
       fixes: [
-        'After a long break, `/compact` or start a fresh session instead of continuing a huge one: the first request after the cache expires rewrites the whole prompt at the cache-write price.',
+        'Before stepping away from a large session, run `/compact` while the cache is still warm. After a long break, start fresh (`/clear`) instead of continuing or compacting a huge conversation: once the cache has expired, the next request, including the one `/compact` sends, reprocesses the whole conversation.',
         'Pick model and effort at the start of a session: `/model` mid-session rebuilds the cache (effort changes keep it on the 5.5 models).',
-        'Avoid connecting or removing MCP servers and plugins mid-session.',
+        'If tool search is off on your setup, connect MCP servers at the start of a session: adding or removing one mid-session rebuilds the cache. With tool search on (the default) it does not, and plugin skills, commands, agents and hooks never do.',
         'On an API key or usage credits the main conversation gets a 5-minute cache; `"promptCacheTtl": "1h"` keeps it through longer pauses.',
       ],
       docs: [`${DOCS}/prompt-caching`],
@@ -191,8 +192,14 @@ export function findings(r) {
       id: 'fast',
       title: 'Fast mode',
       cost: r.fastMode.cost,
-      evidence: [`${r.fastMode.requests.toLocaleString('en-US')} requests ran in fast mode (${usd(r.fastMode.cost)}, ${pct(r.fastMode.cost, total)}).`],
-      fixes: ['Fast mode bills Opus at twice the standard price: turn it off with `/fast` when you do not need the speed.'],
+      evidence: [
+        `${r.fastMode.requests.toLocaleString('en-US')} requests ran in fast mode (${usd(r.fastMode.cost)}, ${pct(r.fastMode.cost, total)}).`,
+        'On Pro, Max, Team and Enterprise plans fast mode is paid from usage credits, not your plan limit, even while plan usage remains.',
+      ],
+      fixes: [
+        'Fast mode bills Opus 5.5, Opus 5 and Opus 4.8 at twice the standard price: turn it off with `/fast` when you do not need the speed.',
+        'If you use it, turn it on at the start of a session: the first time it is turned on in a conversation, the whole context is billed once at the uncached fast-mode input price.',
+      ],
       docs: [`${DOCS}/fast-mode`],
     });
   }

@@ -78,17 +78,21 @@ function lookup(family, major, minor) {
   return { key: earlier || NEWEST_IN_FAMILY[family], known: false };
 }
 
+// Token counts come from files on disk: accept only finite, non-negative numbers below a sane ceiling.
+const MAX_TOKENS = 1e9;
+export const num = (v) => (typeof v === 'number' && Number.isFinite(v) && v >= 0 && v <= MAX_TOKENS ? v : 0);
+
 // Split one API response's usage into list-price cost components (USD).
 export function requestCost(modelId, usage = {}) {
   const { key, known } = resolveModel(modelId);
-  const input = usage.input_tokens || 0;
-  const read = usage.cache_read_input_tokens || 0;
-  const w1h = usage.cache_creation?.ephemeral_1h_input_tokens || 0;
+  const input = num(usage.input_tokens);
+  const read = num(usage.cache_read_input_tokens);
+  const w1h = num(usage.cache_creation?.ephemeral_1h_input_tokens);
   // The TTL breakdown can be partial; whatever it does not attribute to 1h is priced as a 5-minute write.
-  const created = usage.cache_creation_input_tokens || w1h + (usage.cache_creation?.ephemeral_5m_input_tokens || 0);
+  const created = num(usage.cache_creation_input_tokens) || w1h + num(usage.cache_creation?.ephemeral_5m_input_tokens);
   const w5m = Math.max(0, created - w1h);
-  const output = usage.output_tokens || 0;
-  const thinking = usage.output_tokens_details?.thinking_tokens || 0;
+  const output = num(usage.output_tokens);
+  const thinking = Math.min(num(usage.output_tokens_details?.thinking_tokens), output);
 
   let p = PRICES[key];
   if (key === 'haiku-5-5' && input + read + created > HAIKU_5_5_THRESHOLD) p = HAIKU_5_5_LONG;

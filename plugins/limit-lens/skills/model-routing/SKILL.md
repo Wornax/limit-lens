@@ -5,9 +5,9 @@ description: Pick the right model (Haiku, Sonnet or Opus) and effort for each pi
 
 # Route work to Haiku, Sonnet or Opus
 
-**Who this is for:** whoever coordinates, meaning the main session or a workflow. A subagent does not delegate: it does its task on the model it was started with, and if the task is above that model it hands the request back to the coordinator.
+**Who this is for:** whoever starts agents: the main session, a workflow, or a subagent that can start its own. An agent working on a task it was given does it on the model it was started with, and if the task is above that model it hands the request back to whoever started it.
 
-**Why it matters:** usage limits drain much faster on Opus. At list prices, output costs roughly Opus 1, Sonnet 1/2, Haiku 1/40 (`/limit-lens:report` prints the current table). A simple task on Opus wastes limit. A hard task on Haiku comes back wrong and costs more than doing it right once. A risky task on a weak model can break something that can't be undone.
+**Why it matters:** usage limits drain much faster on Opus. At list prices, output costs roughly Opus 1, Sonnet 1/2, Haiku 1/40 (see the [pricing page](https://platform.claude.com/docs/en/about-claude/pricing); `/limit-lens:report` shows which models your work actually ran on). A simple task on Opus wastes limit. A hard task on Haiku comes back wrong and costs more than doing it right once. A risky task on a weak model can break something that can't be undone.
 
 **The rule:** use the smallest model that gets it right on the first try without putting anything risky at stake, and always say which one you picked.
 

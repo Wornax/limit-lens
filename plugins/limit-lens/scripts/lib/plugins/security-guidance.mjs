@@ -8,6 +8,8 @@ import fs from 'node:fs';
 
 const STAMP = /^\[(\d{4})-(\d{2})-(\d{2}) (\d{2}):(\d{2}):(\d{2})(?:\.(\d{1,3}))?\] (.*)$/;
 const USAGE = /^Review usage: (.*)$/;
+// One review costs cents to a few dollars; anything outside [0, 1000] is a corrupt or forged line.
+const MAX_REVIEW_COST = 1000;
 
 export function readSecurityGuidanceLog(logFile, fromMs, toMs) {
   const files = [`${logFile}.1`, logFile].filter((f) => {
@@ -42,7 +44,8 @@ export function readSecurityGuidanceLog(logFile, fromMs, toMs) {
       }
       const raw = fields.est_cost_usd || '0';
       if (raw.endsWith('~')) result.estimated = true;
-      const cost = Number.parseFloat(raw) || 0;
+      const cost = Number.parseFloat(raw);
+      if (!Number.isFinite(cost) || cost < 0 || cost > MAX_REVIEW_COST) continue;
       const kind = ['stop', 'commit', 'push'].includes(fields.review) ? fields.review : 'other';
       const r = (result.reviews[kind] ??= { count: 0, cost: 0 });
       r.count += 1;

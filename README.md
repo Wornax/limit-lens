@@ -46,7 +46,7 @@ Requires Node.js 18 or later on your `PATH`. No other dependencies.
 | Command | What it does |
 | :- | :- |
 | `/limit-lens:report` | Report on the last 7 days |
-| `/limit-lens:report --days 30` | Longer window (1 to 90 days) |
+| `/limit-lens:report --days 30` | Longer window (1 to 90 days; Claude Code deletes transcripts after `cleanupPeriodDays`, 30 days by default) |
 | `/limit-lens:report --project api` | Only projects whose folder name contains `api` |
 | `/limit-lens:report --anonymize` | Replace project folder names, so you can share the report |
 | `/limit-lens:model-routing` | Load the model-routing guide (Claude also loads it on its own before delegating) |
@@ -68,8 +68,9 @@ node plugins/limit-lens/scripts/limit-lens.mjs --json > usage.json
 | Models | Sonnet 5.5 lists at half the price of Opus 5.5. |
 | Cache rebuilds | After a pause longer than the cache lifetime, or a model switch, the next request rewrites the whole prompt at the cache-write price. |
 | Loops and automated turns | Loop firings, background-task notifications and messages from other sessions each re-read the conversation. |
+| Setup at startup | Every new session and agent first writes its setup (system prompt, tools, CLAUDE.md, memory, skill descriptions) before doing any work. |
 | Plugins that call the model | Sessions started by tools through the Agent SDK, plus plugin calls that never reach transcripts (read from the `security-guidance` log). |
-| Fast mode | Fast mode bills Opus at twice the standard price. |
+| Fast mode | Fast mode bills Opus at twice the standard price; on a subscription it is paid from usage credits, not your plan limit. |
 
 Lenses overlap: a subagent's cache reads count under both "Re-reading context" and "Subagents".
 
@@ -83,7 +84,8 @@ Lenses overlap: a subagent's cache reads count under both "Re-reading context" a
 ## Privacy
 
 - No network calls. Everything stays on your machine.
-- The report contains numbers, project folder names and short session ids. It never contains prompt, response or tool output text. `--anonymize` replaces folder names with `project-1`, `project-2`, and so on.
+- The report contains numbers, project folder names and short session ids (`--json` prints full session ids). It never contains prompt, response or tool output text. `--anonymize` replaces folder names with `project-1`, `project-2`, and so on, and hides custom agent names and searched paths.
+- Names read from disk are reduced to plain characters before they reach the report, so a hostile file or folder name cannot inject text into the conversation.
 
 ## Limits
 

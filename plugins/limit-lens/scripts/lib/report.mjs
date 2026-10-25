@@ -3,7 +3,8 @@
 import { usd, pct, tokens, topEntries, modelName } from './format.mjs';
 
 const MAX_SHOWN = 6;
-const ENTRYPOINT_NAMES ={ cli: 'terminal', 'claude-desktop': 'desktop app', 'sdk-py': 'Python SDK', 'sdk-ts': 'TypeScript SDK' };
+const ENTRYPOINT_NAMES = Object.assign(Object.create(null), { cli: 'terminal', 'claude-desktop': 'desktop app', 'sdk-py': 'Python SDK', 'sdk-ts': 'TypeScript SDK' });
+const entrypointName = (k) => ENTRYPOINT_NAMES[k] || clean(k);
 
 // Folder and file names come from disk and can contain anything (Linux allows newlines):
 // keep only characters that cannot change the Markdown around them.
@@ -24,6 +25,7 @@ const NOTES = {
   'plugin-log-unscoped': 'The security-guidance log is not split by project, so its spend is left out of a `--project` report.',
   'plugin-log-partial': 'The security-guidance log rotates at 1 MB and does not reach back to the start of this window, so some plugin spend is missing.',
   'unreadable-transcript': 'Some transcript files could not be read and were skipped.',
+  'history-shorter-than-window': 'Your transcripts do not reach back to the start of this window: Claude Code deletes them after `cleanupPeriodDays` (30 days by default). Raise that setting in settings.json to keep more history.',
 };
 
 export function renderMarkdown(r, found, { anonymize = false, searched = [] } = {}) {
@@ -33,7 +35,11 @@ export function renderMarkdown(r, found, { anonymize = false, searched = [] } = 
 
   if (!r.totals.requests) {
     lines.push('No Claude Code usage found in this window.');
-    if (searched.length) lines.push('', 'Looked in:', ...searched.map((d) => `- \`${String(d).replace(/`/g, '')}\``));
+    if (searched.length && anonymize) lines.push('', 'Looked in the Claude config folders (paths hidden by `--anonymize`).');
+    else if (searched.length) {
+      // JSON.stringify escapes newlines and control characters, so a path cannot leave its code span.
+      lines.push('', 'Looked in:', ...searched.map((d) => `- \`${JSON.stringify(String(d)).slice(0, 200).replace(/`/g, '')}\``));
+    }
     lines.push('', 'Try a longer window (`--days 30`) or point at another folder (`--config-dir`).');
     return lines.join('\n') + '\n';
   }
@@ -63,7 +69,7 @@ export function renderMarkdown(r, found, { anonymize = false, searched = [] } = 
     `- **By model:** ${topEntries(r.byModel, total, 4, modelName)}`,
     `- **By effort:** ${topEntries(r.byEffort, total, 5)}`,
     `- **By source:** main conversation ${pct(r.mainConversation.cost, total)} (you ${pct(r.turns.human.cost, total)}, automated ${pct(r.turns.automated.cost, total)}), subagents ${pct(sub.cost, total)}, workflow agents ${pct(wf.cost, total)}`,
-    `- **Started from:** ${topEntries(r.byEntrypoint, total, 4, (k) => ENTRYPOINT_NAMES[k] || k)}`,
+    `- **Started from:** ${topEntries(r.byEntrypoint, total, 4, entrypointName)}`,
   );
   if (r.outside.cost) lines.push(`- **Plugin calls outside transcripts:** ${usd(r.outside.cost)} (not in the total above)`);
   lines.push('');
@@ -79,14 +85,14 @@ export function renderMarkdown(r, found, { anonymize = false, searched = [] } = 
   });
   if (found.length > MAX_SHOWN) {
     const rest = found.slice(MAX_SHOWN).map((f) => `${f.title} (${pct(f.cost, total)})`).join(', ');
-    lines.push(`Also above its threshold: ${rest}. Run with \`--json\` for the details.`, '');
+    lines.push(`Also above its threshold: ${rest}.`, '');
   }
 
   if (r.topSessions.length) {
     lines.push('## Costliest sessions', '', '| Project | Session | From | Spend | Requests | Avg context | Re-read |', '| :- | :- | :- | -: | -: | -: | -: |');
     for (const s of r.topSessions) {
       lines.push(
-        `| ${clean(name(s.project))} | ${clean(s.sessionId.slice(0, 8))} | ${ENTRYPOINT_NAMES[s.entrypoint] || clean(s.entrypoint)} | ${usd(s.cost)} | ${s.requests.toLocaleString('en-US')} | ${tokens(s.avgPromptTokens)} | ${pct(s.rereadCost, s.cost)} |`,
+        `| ${clean(name(s.project))} | ${clean(s.sessionId.slice(0, 8))} | ${entrypointName(s.entrypoint)} | ${usd(s.cost)} | ${s.requests.toLocaleString('en-US')} | ${tokens(s.avgPromptTokens)} | ${pct(s.rereadCost, s.cost)} |`,
       );
     }
     lines.push('', 'Spend per session counts its main conversation only, not its subagents.', '');

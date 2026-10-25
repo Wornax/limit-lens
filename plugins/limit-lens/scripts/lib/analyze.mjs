@@ -3,7 +3,7 @@
 // and every keyed map has a null prototype.
 import crypto from 'node:crypto';
 import fs from 'node:fs';
-import { requestCost, PRICES_AS_OF } from './pricing.mjs';
+import { requestCost, num, PRICES_AS_OF } from './pricing.mjs';
 import { findTranscripts } from './discover.mjs';
 import { keptLines } from './lines.mjs';
 import { labelForPrompt } from './signatures.mjs';
@@ -141,6 +141,13 @@ export async function analyze({ projectsDirs, now = Date.now(), days = 7, projec
   for (const [ep, set] of Object.entries(entrypointSessions)) report.byEntrypoint[ep].sessions = set.size;
   report.startup.avgTokens = report.startup.count ? Math.round(report.startup.tokens / report.startup.count) : 0;
   delete report.startup.tokens;
+  // Claude Code deletes transcripts after cleanupPeriodDays (30 by default), so a long window can outrun the history.
+  const oldest = report.window.oldestSeenMs;
+  delete report.window.oldestSeenMs;
+  if (oldest !== undefined && oldest > from + DAY) {
+    report.window.oldestData = new Date(oldest).toISOString();
+    report.notes.push('history-shorter-than-window');
+  }
   report.topSessions = sessionRows.sort((a, b) => b.cost - a.cost).slice(0, TOP_SESSIONS);
 
   if (securityLog && project) {
@@ -196,6 +203,7 @@ async function readTranscript(t, f, { from, to, report, seen, sessions, entrypoi
     // The transcript's first response writes the setup (system prompt, tools, CLAUDE.md, memory, skill list).
     const isFirst = !f.sawResponse;
     f.sawResponse = true;
+    if (ts < (report.window.oldestSeenMs ?? Infinity)) report.window.oldestSeenMs = ts;
     if (!(ts >= from && ts <= to)) continue;
     const id = msg.id || o.requestId;
     if (id) {
@@ -203,7 +211,7 @@ async function readTranscript(t, f, { from, to, report, seen, sessions, entrypoi
       seen.add(id);
     }
     const c = requestCost(msg.model, usage);
-    if (c.total === 0) continue;
+    if (!(c.total > 0) || !Number.isFinite(c.total)) continue;
 
     const entrypoint = label(o.entrypoint);
     f.entrypoint ??= entrypoint;
@@ -223,13 +231,13 @@ async function readTranscript(t, f, { from, to, report, seen, sessions, entrypoi
     (entrypointSessions[entrypoint] ??= new Set()).add(sessionKey);
     if (usage.speed === 'fast') add(report, 'fastMode', c.total);
 
-    const created = usage.cache_creation_input_tokens || 0;
-    const promptTokens = (usage.input_tokens || 0) + (usage.cache_read_input_tokens || 0) + created;
+    const created = num(usage.cache_creation_input_tokens);
+    const promptTokens = num(usage.input_tokens) + num(usage.cache_read_input_tokens) + created;
     if (isFirst) {
       const setup = c.input + c.cacheWrite5m + c.cacheWrite1h;
       report.startup.cost += setup;
       report.startup.count += 1;
-      report.startup.tokens += (usage.input_tokens || 0) + created;
+      report.startup.tokens += num(usage.input_tokens) + created;
       report.startup.byKind[t.kind].cost += setup;
       report.startup.byKind[t.kind].count += 1;
     }

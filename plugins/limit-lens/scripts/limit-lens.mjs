@@ -4,7 +4,7 @@ import path from 'node:path';
 import { analyze } from './lib/analyze.mjs';
 import { defaultConfigDirs, securityGuidanceLogFile } from './lib/discover.mjs';
 import { findings } from './lib/findings.mjs';
-import { renderMarkdown, anonymizer } from './lib/report.mjs';
+import { renderMarkdown, anonymizer, clean } from './lib/report.mjs';
 
 const USAGE = `Usage: limit-lens [--days N] [--project NAME] [--anonymize] [--json] [--config-dir PATH]
 
@@ -14,6 +14,8 @@ const USAGE = `Usage: limit-lens [--days N] [--project NAME] [--anonymize] [--js
   --json             print the raw report and findings as JSON
   --config-dir PATH  Claude config folder (default: CLAUDE_CONFIG_DIR, ~/.claude and ~/.config/claude)
 `;
+
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 // Agent types Claude Code ships with; any other name is the user's own and is hidden by --anonymize.
 const BUILT_IN_AGENTS = new Set(['general-purpose', 'Explore', 'Plan', 'statusline-setup', 'claude-code-guide', 'workflow-subagent', 'fork', 'unknown', 'other']);
@@ -75,6 +77,11 @@ const found = findings(report);
 
 if (opts.json) {
   if (opts.anonymize) anonymizeJson(report);
+  // Names come from disk: keep real session ids (UUIDs), and reduce anything else to a cleaned stub.
+  for (const s of report.topSessions) {
+    s.sessionId = UUID.test(s.sessionId) ? s.sessionId : clean(s.sessionId).slice(0, 8);
+    s.project = clean(s.project).slice(0, 80);
+  }
   process.stdout.write(JSON.stringify({ report, findings: found }, null, 2) + '\n');
 } else {
   process.stdout.write(renderMarkdown(report, found, { anonymize: opts.anonymize, searched: projectsDirs }));
