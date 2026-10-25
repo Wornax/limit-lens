@@ -61,8 +61,18 @@ function newReport(from, to, days) {
       workflow: { ...bucket(), byType: {}, byModel: {} },
     },
     toolSessions: {},
+    context: { avgPromptTokens: 0, requestsOver200k: 0, costOver200k: 0 },
+    cache: { rebuilds: { afterIdle: { cost: 0, count: 0 }, modelSwitch: { cost: 0, count: 0 }, other: { cost: 0, count: 0 } } },
+    topSessions: [],
   };
 }
+
+// A request "rebuilds" the cache when it writes most of its prompt again (not just the new turn).
+const REBUILD_MIN_TOKENS = 10_000;
+const REBUILD_MIN_SHARE = 0.5;
+const HOUR = 3_600_000;
+const FIVE_MIN = 300_000;
+const TOP_SESSIONS = 5;
 
 export async function analyze({ projectsDirs, now = Date.now(), days = 7, project = null, securityLogDir = null } = {}) {
   const to = typeof now === 'number' ? now : now.getTime();
@@ -71,13 +81,18 @@ export async function analyze({ projectsDirs, now = Date.now(), days = 7, projec
   const seen = new Set();
   const sessions = new Set();
   const entrypointSessions = {};
+  const sessionRows = [];
+  let mainPromptTokens = 0;
 
   let transcripts = findTranscripts(projectsDirs, from);
   if (project) transcripts = transcripts.filter((t) => t.project.toLowerCase().includes(project.toLowerCase()));
 
   for (const t of transcripts) {
     const meta = t.metaFile ? readMeta(t.metaFile) : null;
-    const f = { cost: 0, requests: 0, entrypoint: null, firstLabel: undefined, turn: { hash: null }, hashes: new Map() };
+    const f = {
+      cost: 0, requests: 0, entrypoint: null, firstLabel: undefined, turn: { hash: null }, hashes: new Map(),
+      prevTs: null, prevModel: null, ttlMs: HOUR, promptTokens: 0, rereadCost: 0,
+    };
 
     const rl = readline.createInterface({ input: fs.createReadStream(t.file), crlfDelay: Infinity });
     for await (const line of rl) {
@@ -120,6 +135,20 @@ export async function analyze({ projectsDirs, now = Date.now(), days = 7, projec
       f.entrypoint ??= o.entrypoint || null;
       f.cost += c.total;
       f.requests += 1;
+      f.rereadCost += c.cacheRead;
+
+      const created = usage.cache_creation_input_tokens || 0;
+      const promptTokens = (usage.input_tokens || 0) + (usage.cache_read_input_tokens || 0) + created;
+      if (f.prevTs !== null && created >= REBUILD_MIN_TOKENS && created >= REBUILD_MIN_SHARE * promptTokens) {
+        const writeCost = c.cacheWrite5m + c.cacheWrite1h;
+        const r = msg.model !== f.prevModel ? 'modelSwitch' : ts - f.prevTs > f.ttlMs ? 'afterIdle' : 'other';
+        report.cache.rebuilds[r].cost += writeCost;
+        report.cache.rebuilds[r].count += 1;
+      }
+      if (usage.cache_creation?.ephemeral_1h_input_tokens > 0) f.ttlMs = HOUR;
+      else if (created > 0) f.ttlMs = FIVE_MIN;
+      f.prevTs = ts;
+      f.prevModel = msg.model;
       sessions.add(`${t.project}/${t.sessionId}`);
       report.totals.cost += c.total;
       report.totals.requests += 1;
@@ -134,6 +163,11 @@ export async function analyze({ projectsDirs, now = Date.now(), days = 7, projec
       if (t.kind === 'main') {
         report.mainConversation.cost += c.total;
         report.mainConversation.requests += 1;
+        f.promptTokens += promptTokens;
+        if (promptTokens > 200_000) {
+          report.context.requestsOver200k += 1;
+          report.context.costOver200k += c.total;
+        }
         const kind = turnKind(f.turn, f.entrypoint);
         if (kind === 'human') {
           report.turns.human.cost += c.total;
@@ -157,6 +191,18 @@ export async function analyze({ projectsDirs, now = Date.now(), days = 7, projec
       }
     }
 
+    if (t.kind === 'main' && f.requests > 0) {
+      sessionRows.push({
+        project: t.project,
+        sessionId: t.sessionId,
+        entrypoint: f.entrypoint || 'unknown',
+        cost: f.cost,
+        requests: f.requests,
+        avgPromptTokens: Math.round(f.promptTokens / f.requests),
+        rereadCost: f.rereadCost,
+      });
+      mainPromptTokens += f.promptTokens;
+    }
     if (t.kind === 'main') {
       let looped = false;
       for (const h of f.hashes.values()) {
@@ -177,6 +223,9 @@ export async function analyze({ projectsDirs, now = Date.now(), days = 7, projec
   }
 
   report.totals.sessions = sessions.size;
+  const mainRequests = report.mainConversation.requests;
+  report.context.avgPromptTokens = mainRequests ? Math.round(mainPromptTokens / mainRequests) : 0;
+  report.topSessions = sessionRows.sort((a, b) => b.cost - a.cost).slice(0, TOP_SESSIONS);
   for (const [ep, set] of Object.entries(entrypointSessions)) report.byEntrypoint[ep].sessions = set.size;
   return report;
 }
