@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// limit-lens: show where your Claude Code usage limit goes, apply chosen fixes to your settings,
+// limit-xray: show where your Claude Code usage limit goes, apply chosen fixes to your settings,
 // and compare before and after. Reads local files only; no network.
 import fs from 'node:fs';
 import path from 'node:path';
@@ -14,14 +14,14 @@ import { renderDashboard } from './lib/dashboard.mjs';
 import { userConfigDir } from './lib/settings.mjs';
 import { renderMarkdown, renderPlan, renderAnalyze, diagnosis, questions, contributorName, anonymizer, clean, UUID } from './lib/report.mjs';
 
-const USAGE = `Usage: limit-lens [command] [options]
+const USAGE = `Usage: limit-xray [command] [options]
 
-  limit-lens [--days N] [--project NAME] [--anonymize] [--json]   report where your limit goes
-  limit-lens analyze [--open] [--json]                             the report, the fixes to ask about and other suggestions, and a dashboard page
-  limit-lens plan [--json]                                         list the fixes you can apply
-  limit-lens apply FIX_ID [FIX_ID ...]                             apply the chosen fixes (backs up settings first)
-  limit-lens compare [--experiment ID]                             compare usage before and after the last change
-  limit-lens revert [--experiment ID]                              undo the last change
+  limit-xray [--days N] [--project NAME] [--anonymize] [--json]   report where your limit goes
+  limit-xray analyze [--open] [--json]                             the report, the fixes to ask about and other suggestions, and a dashboard page
+  limit-xray plan [--json]                                         list the fixes you can apply
+  limit-xray apply FIX_ID [FIX_ID ...]                             apply the chosen fixes (backs up settings first)
+  limit-xray compare [--experiment ID]                             compare usage before and after the last change
+  limit-xray revert [--experiment ID]                              undo the last change
 
 Options:
   --days N           window to analyze, 1 to 90 (default 7)
@@ -85,9 +85,9 @@ function parseArgs(rawArgv) {
   // The other commands always look at the last 7 days of every project, the window compare measures against.
   if (opts.open && opts.command !== 'analyze') fail('--open applies only to analyze.');
   if (opts.command !== 'report' && (opts.daysGiven || opts.project !== null || opts.anonymize)) {
-    fail('--days, --project and --anonymize apply only to the report (limit-lens [--days N] [--project NAME] [--anonymize]).');
+    fail('--days, --project and --anonymize apply only to the report (limit-xray [--days N] [--project NAME] [--anonymize]).');
   }
-  if (opts.command === 'apply' && !opts.ids.length) fail('Name at least one fix id to apply (see `limit-lens plan`).');
+  if (opts.command === 'apply' && !opts.ids.length) fail('Name at least one fix id to apply (see `limit-xray plan`).');
   return opts;
 }
 
@@ -126,10 +126,10 @@ function sanitizeJson(report, anonymize) {
   }
 }
 
-// Open a local file with the system's default app (the browser, for HTML). The path is limit-lens's own;
-// LIMIT_LENS_NO_OPEN=1 turns this off, for tests and headless runs.
+// Open a local file with the system's default app (the browser, for HTML). The path is limit-xray's own;
+// LIMIT_XRAY_NO_OPEN=1 turns this off, for tests and headless runs.
 function openInBrowser(file) {
-  if (process.env.LIMIT_LENS_NO_OPEN) return false;
+  if (process.env.LIMIT_XRAY_NO_OPEN) return false;
   const [cmd, args] = process.platform === 'win32' ? ['explorer.exe', [file]] : process.platform === 'darwin' ? ['open', [file]] : ['xdg-open', [file]];
   try {
     const child = spawn(cmd, args, { detached: true, stdio: 'ignore', windowsHide: true });
@@ -199,7 +199,7 @@ try {
     }
   } else if (opts.command === 'compare') {
     const exp = findExperiment(settingsDir, opts.experiment);
-    if (!exp) out('No experiment yet: apply a fix first (`limit-lens plan`, then `limit-lens apply FIX_ID`).\n');
+    if (!exp) out('No experiment yet: apply a fix first (`limit-xray plan`, then `limit-xray apply FIX_ID`).\n');
     else {
       const from = Date.parse(exp.appliedAt);
       const after = metrics(await analyze({ projectsDirs, from, to: Math.max(now, from + 1), securityLog }));
@@ -221,6 +221,6 @@ try {
     out(lines.join('\n') + '\n');
   }
 } catch (e) {
-  process.stderr.write(`limit-lens: ${e.message}\n`);
+  process.stderr.write(`limit-xray: ${e.message}\n`);
   process.exit(2);
 }

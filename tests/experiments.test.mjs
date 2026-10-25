@@ -6,7 +6,7 @@ import { spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import { NOW, daysAgo, tempRoot, assistant, writeTranscript, writeJson } from './helpers.mjs';
 
-const CLI = path.join(path.dirname(fileURLToPath(import.meta.url)), '..', 'plugins', 'limit-lens', 'scripts', 'limit-lens.mjs');
+const CLI = path.join(path.dirname(fileURLToPath(import.meta.url)), '..', 'plugins', 'limit-xray', 'scripts', 'limit-xray.mjs');
 const DAY = 86_400_000;
 const iso = (ms) => new Date(ms).toISOString();
 const cli = (root, args, now) => spawnSync(process.execPath, [CLI, ...args, '--config-dir', root, '--now', iso(now)], { encoding: 'utf8' });
@@ -46,7 +46,7 @@ test('plan lists the applicable fixes with ids, and apply writes only the chosen
   assert.equal(settings.env.CLAUDE_CODE_SUBAGENT_MODEL, 'sonnet');
   assert.equal(settings.env.KEEP, '1');
   assert.equal(settings.model, 'opus'); // not chosen, not changed
-  const state = JSON.parse(fs.readFileSync(path.join(root, 'limit-lens', 'experiments.json'), 'utf8'));
+  const state = JSON.parse(fs.readFileSync(path.join(root, 'limit-xray', 'experiments.json'), 'utf8'));
   assert.equal(state.experiments.length, 1);
   assert.deepEqual(state.experiments[0].changes.map((c) => c.fixId), ['subagent-model-sonnet']);
   assert.ok(state.experiments[0].baseline.spend > 0);

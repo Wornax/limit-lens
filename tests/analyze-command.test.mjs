@@ -1,4 +1,4 @@
-// `limit-lens analyze`: the report, then the questions (routing first), then the other suggestions, in
+// `limit-xray analyze`: the report, then the questions (routing first), then the other suggestions, in
 // one pass over the transcripts. Synthetic data and temp folders only.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
@@ -8,7 +8,7 @@ import { spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import { NOW, minutesAgo, tempRoot, assistant, writeTranscript, writeJson } from './helpers.mjs';
 
-const CLI = path.join(path.dirname(fileURLToPath(import.meta.url)), '..', 'plugins', 'limit-lens', 'scripts', 'limit-lens.mjs');
+const CLI = path.join(path.dirname(fileURLToPath(import.meta.url)), '..', 'plugins', 'limit-xray', 'scripts', 'limit-xray.mjs');
 const M = 1_000_000;
 const run = (root, ...args) => spawnSync(process.execPath, [CLI, ...args, '--config-dir', root, '--now', new Date(NOW).toISOString()], { encoding: 'utf8' });
 

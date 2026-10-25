@@ -38,7 +38,7 @@ export function renderCompare(experiment, after) {
   const before = experiment.baseline;
   const applied = experiment.appliedAt.slice(0, 16).replace('T', ' ');
   const fixes = experiment.changes.map((c) => `\`${c.fixId}\``).join(', ');
-  const lines = ['# limit-lens: before and after', '', `Experiment \`${experiment.id}\`, applied ${applied} UTC: ${fixes}.`];
+  const lines = ['# limit-xray: before and after', '', `Experiment \`${experiment.id}\`, applied ${applied} UTC: ${fixes}.`];
   if (experiment.revertedAt) lines.push(`It was reverted on ${experiment.revertedAt.slice(0, 16).replace('T', ' ')} UTC, so "after" mixes both settings.`);
   lines.push('');
   if (after.activeDays < MIN_ACTIVE_DAYS || after.requests < MIN_REQUESTS) {

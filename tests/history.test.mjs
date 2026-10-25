@@ -4,11 +4,11 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import path from 'node:path';
-import { analyze } from '../plugins/limit-lens/scripts/lib/analyze.mjs';
-import { findings } from '../plugins/limit-lens/scripts/lib/findings.mjs';
-import { currentPlan, applyFixes, revertExperiment, planHistory } from '../plugins/limit-lens/scripts/lib/experiments.mjs';
-import { renderPlan, renderAnalyze } from '../plugins/limit-lens/scripts/lib/report.mjs';
-import { renderDashboard } from '../plugins/limit-lens/scripts/lib/dashboard.mjs';
+import { analyze } from '../plugins/limit-xray/scripts/lib/analyze.mjs';
+import { findings } from '../plugins/limit-xray/scripts/lib/findings.mjs';
+import { currentPlan, applyFixes, revertExperiment, planHistory } from '../plugins/limit-xray/scripts/lib/experiments.mjs';
+import { renderPlan, renderAnalyze } from '../plugins/limit-xray/scripts/lib/report.mjs';
+import { renderDashboard } from '../plugins/limit-xray/scripts/lib/dashboard.mjs';
 import { NOW, minutesAgo, tempRoot, assistant, writeTranscript, writeJson } from './helpers.mjs';
 
 const M = 1_000_000;

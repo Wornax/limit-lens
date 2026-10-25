@@ -1,15 +1,15 @@
-# limit-lens
+# limit-xray
 
 **See where your Claude Code usage limit goes, then fix it.**
 
-limit-lens is a Claude Code plugin with one command, `/limit-lens:analyze`:
+limit-xray is a Claude Code plugin with one command, `/limit-xray:analyze`:
 
 1. **Report.** A small local script reads your session transcripts, works out what each request would cost at API list prices, and shows what eats your limit: models, effort, agents, re-read context, loops, plugins, and the biggest projects. You get bar charts in the conversation and a dashboard page in your browser. Finding out costs few tokens: the script does the math, and Claude only reads the short result.
 2. **Model routing.** Claude asks whether to turn on `model-routing`, a skill shipped with the plugin that has Claude pick Haiku, Sonnet or Opus (and an effort level) for each agent it starts.
 3. **Fixes.** Claude asks about each settings fix that would help you, one question at a time, and applies only the ones you choose, with a backup.
 4. **Other suggestions.** The habits and commands only you can adopt.
 
-A few days later, `/limit-lens:analyze compare` shows your usage before and after, and `/limit-lens:analyze revert` undoes the change.
+A few days later, `/limit-xray:analyze compare` shows your usage before and after, and `/limit-xray:analyze revert` undoes the change.
 
 ## What you get
 
@@ -38,13 +38,13 @@ Workflow agents          ██████                     25%     $310
 
 Then the findings, each with its evidence, and the fixes as questions.
 
-In your browser, a dashboard page with the same numbers: the spend, cards for the biggest shares, spend by day, bars by model, effort, source and project, the findings, every fix with what it is and its estimated saving, and the other suggestions. It is one local HTML file (`<config dir>/limit-lens/dashboard.html`) that loads nothing from the network, in light and dark.
+In your browser, a dashboard page with the same numbers: the spend, cards for the biggest shares, spend by day, bars by model, effort, source and project, the findings, every fix with what it is and its estimated saving, and the other suggestions. It is one local HTML file (`<config dir>/limit-xray/dashboard.html`) that loads nothing from the network, in light and dark.
 
 Each finding lists fixes that use real settings and commands, checked against the [Claude Code docs](https://code.claude.com/docs/en/costs), with links.
 
 ## Analyze, fix, then measure
 
-`/limit-lens:analyze` turns the report into changes you approve one by one:
+`/limit-xray:analyze` turns the report into changes you approve one by one:
 
 1. It opens with what is eating your limit: where the spend goes, the biggest projects, and the findings with their numbers.
 2. Then it asks about the fixes that apply to you. The first is usually model routing: a three-line block in your `CLAUDE.md` (`<config dir>/CLAUDE.md`, the instructions Claude Code loads in every session) that makes Claude read the `model-routing` guide before it starts a subagent or workflow agent. The rest are settings. Each fix shows:
@@ -58,15 +58,15 @@ Each finding lists fixes that use real settings and commands, checked against th
 3. Claude asks one question per fix, with "Skip" first and "Show details" next. Alternatives, such as running the security-guidance per-turn review on Sonnet or dropping it, share one question, and the script refuses both together.
 4. The script, not Claude, writes the chosen changes into your user `settings.json` and `CLAUDE.md`, after backing them up. The apply command also goes through Claude Code's own permission prompt, so you approve twice. In auto mode the classifier may approve that command without asking; the question in the conversation is then your only check.
 5. It ends with the other suggestions: habits such as `/clear` and `/compact`, and changes to your own agents and skills. Slash commands are yours to type.
-6. After a few days of normal use, `/limit-lens:analyze compare` shows spend per active day and per request, and the share of each lens, before and after. `/limit-lens:analyze revert` puts back only what it changed: the settings keys, and the routing block in `CLAUDE.md`. It leaves alone anything you changed since.
+6. After a few days of normal use, `/limit-xray:analyze compare` shows spend per active day and per request, and the share of each lens, before and after. `/limit-xray:analyze revert` puts back only what it changed: the settings keys, and the routing block in `CLAUDE.md`. It leaves alone anything you changed since.
 
-What it can change: the routing block in `CLAUDE.md`; in `settings.json`, `env.CLAUDE_CODE_SUBAGENT_MODEL`, per-model `effortLevel` under `modelSettings`, `autoCompactWindow`, `crossSessionInbound`, `fastMode`, `model`, and the security-guidance plugin's model variables. Records and backups live in `<config dir>/limit-lens/`.
+What it can change: the routing block in `CLAUDE.md`; in `settings.json`, `env.CLAUDE_CODE_SUBAGENT_MODEL`, per-model `effortLevel` under `modelSettings`, `autoCompactWindow`, `crossSessionInbound`, `fastMode`, `model`, and the security-guidance plugin's model variables. Records and backups live in `<config dir>/limit-xray/`.
 
 ## Install
 
 ```text
-/plugin marketplace add Wornax/limit-lens
-/plugin install limit-lens@limit-lens
+/plugin marketplace add Wornax/limit-xray
+/plugin install limit-xray@limit-xray
 ```
 
 Requires Node.js 18 or later on your `PATH`. No other dependencies.
@@ -75,23 +75,23 @@ Requires Node.js 18 or later on your `PATH`. No other dependencies.
 
 | Command | What it does |
 | :- | :- |
-| `/limit-lens:analyze` | Report on the last 7 days with charts and a dashboard, then ask about model routing and each fix, and apply the ones you choose |
-| `/limit-lens:analyze compare` | Compare usage before and after the last change |
-| `/limit-lens:analyze revert` | Undo the last change |
-| `/limit-lens:report` | Report only, nothing asked or changed |
-| `/limit-lens:report --days 30` | Longer window (1 to 90 days; Claude Code deletes transcripts after `cleanupPeriodDays`, 30 days by default) |
-| `/limit-lens:report --project api` | Only projects whose folder name contains `api` |
-| `/limit-lens:report --anonymize` | Replace project folder names, so you can share the report |
-| `/limit-lens:model-routing` | Load the model-routing guide (Claude also loads it on its own before delegating) |
+| `/limit-xray:analyze` | Report on the last 7 days with charts and a dashboard, then ask about model routing and each fix, and apply the ones you choose |
+| `/limit-xray:analyze compare` | Compare usage before and after the last change |
+| `/limit-xray:analyze revert` | Undo the last change |
+| `/limit-xray:report` | Report only, nothing asked or changed |
+| `/limit-xray:report --days 30` | Longer window (1 to 90 days; Claude Code deletes transcripts after `cleanupPeriodDays`, 30 days by default) |
+| `/limit-xray:report --project api` | Only projects whose folder name contains `api` |
+| `/limit-xray:report --anonymize` | Replace project folder names, so you can share the report |
+| `/limit-xray:model-routing` | Load the model-routing guide (Claude also loads it on its own before delegating) |
 
-Claude runs `/limit-lens:analyze` on its own when you ask why you keep hitting your limit; `/limit-lens:report` runs only when you type it. Run either in a fresh session: the analysis adds a few thousand tokens of context. You can also run the script directly, outside Claude Code:
+Claude runs `/limit-xray:analyze` on its own when you ask why you keep hitting your limit; `/limit-xray:report` runs only when you type it. Run either in a fresh session: the analysis adds a few thousand tokens of context. You can also run the script directly, outside Claude Code:
 
 ```bash
-node plugins/limit-lens/scripts/limit-lens.mjs --days 7
-node plugins/limit-lens/scripts/limit-lens.mjs --json > usage.json
-node plugins/limit-lens/scripts/limit-lens.mjs analyze --open
-node plugins/limit-lens/scripts/limit-lens.mjs apply model-routing-rule subagent-model-sonnet
-node plugins/limit-lens/scripts/limit-lens.mjs compare
+node plugins/limit-xray/scripts/limit-xray.mjs --days 7
+node plugins/limit-xray/scripts/limit-xray.mjs --json > usage.json
+node plugins/limit-xray/scripts/limit-xray.mjs analyze --open
+node plugins/limit-xray/scripts/limit-xray.mjs apply model-routing-rule subagent-model-sonnet
+node plugins/limit-xray/scripts/limit-xray.mjs compare
 ```
 
 ## What it measures
@@ -113,14 +113,14 @@ Lenses overlap: a subagent's cache reads count under both "Re-reading context" a
 ## How it works
 
 - Reads `projects/**/*.jsonl` under `CLAUDE_CONFIG_DIR`, `~/.claude` and `~/.config/claude`, including subagent and workflow agent transcripts.
-- **Counts each API response once.** Claude Code writes one transcript line per content block (thinking, text, tool call), each carrying the full usage of the response, the same `message.id` and a different `uuid`. Deduplicating by `(requestId, uuid)` counts a response once per block, about twice on real data; limit-lens deduplicates by `message.id`.
+- **Counts each API response once.** Claude Code writes one transcript line per content block (thinking, text, tool call), each carrying the full usage of the response, the same `message.id` and a different `uuid`. Deduplicating by `(requestId, uuid)` counts a response once per block, about twice on real data; limit-xray deduplicates by `message.id`.
 - Skips the lines it never needs (tool results, request blobs) from their first bytes without decoding them, so a heavy week of transcripts (several GB) takes well under a minute.
 - Prices each response with the [API list prices](https://platform.claude.com/docs/en/about-claude/pricing) (cache writes by TTL, cache reads, thinking, fast mode, US-only inference, Haiku 5.5's long-prompt tier). The table's date is printed on every report.
 
 ## Privacy
 
 - No network calls. Everything stays on your machine.
-- It writes only what you approve, through the script: keys in your user `settings.json` and the routing block in your user `CLAUDE.md`, each backed up first. The one other file is its own dashboard page, `<config dir>/limit-lens/dashboard.html` (numbers and project names, never conversation text), which `analyze --open` opens in your default browser.
+- It writes only what you approve, through the script: keys in your user `settings.json` and the routing block in your user `CLAUDE.md`, each backed up first. The one other file is its own dashboard page, `<config dir>/limit-xray/dashboard.html` (numbers and project names, never conversation text), which `analyze --open` opens in your default browser.
 - The report contains numbers, project folder names and short session ids (`--json` prints full session ids). It never contains prompt, response or tool output text. `--anonymize` replaces folder names with `project-1`, `project-2`, and so on, and hides custom agent names and searched paths.
 - Names read from disk are reduced to plain characters before they reach the report, so a hostile file or folder name cannot inject text into the conversation.
 
@@ -132,7 +132,7 @@ Lenses overlap: a subagent's cache reads count under both "Re-reading context" a
 
 ## Contributing
 
-- **A plugin that calls the model?** Add its log reader under `plugins/limit-lens/scripts/lib/plugins/`, or its first-prompt signature to `signatures.mjs`, with a test.
+- **A plugin that calls the model?** Add its log reader under `plugins/limit-xray/scripts/lib/plugins/`, or its first-prompt signature to `signatures.mjs`, with a test.
 - **Prices changed?** Update `PRICES` and `PRICES_AS_OF` in `pricing.mjs`; the tests carry worked examples from the pricing page.
 - Run the tests with `npm test`. Tests use synthetic transcripts only: never commit real ones.
 

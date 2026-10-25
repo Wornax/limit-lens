@@ -50,7 +50,7 @@ export function findings(r) {
     if (opusAgents > 0) evidence.push(`Opus runs ${pct(opusAgents, agentsCost)} of agent spend.`);
     const fixes = [
       'Run agents on a smaller model: `"env": { "CLAUDE_CODE_SUBAGENT_MODEL": "sonnet" }` in settings.json sets the model for agents that do not choose one themselves.',
-      'Give custom agents a `model:` and an `effort:` in their frontmatter, and pick per task with `/limit-lens:model-routing`.',
+      'Give custom agents a `model:` and an `effort:` in their frontmatter, and pick per task with `/limit-xray:model-routing`.',
       'The blunt option: `"CLAUDE_CODE_SUBAGENT_MODEL_FORCE": "1"` together with `CLAUDE_CODE_SUBAGENT_MODEL` puts every subagent, teammate and workflow agent on that model and ignores frontmatter and per-call choices (Claude Code 2.1.257+).',
     ];
     if (longAgents) {
@@ -93,7 +93,7 @@ export function findings(r) {
       fixes: [
         'Start routine sessions with `/model sonnet`: Sonnet 5.5 lists at half the price of Opus 5.5. Choose at the start, since switching mid-session rebuilds the cache.',
         '`opusplan` plans on Opus and executes on Sonnet (each plan-mode toggle starts a fresh cache).',
-        'Let Claude pick a model per task with the model-routing skill (`/limit-lens:model-routing`).',
+        'Let Claude pick a model per task with the model-routing skill (`/limit-xray:model-routing`).',
       ],
       docs: [`${DOCS}/model-config`],
     });

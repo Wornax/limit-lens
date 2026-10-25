@@ -5,13 +5,13 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
-import { analyze } from '../plugins/limit-lens/scripts/lib/analyze.mjs';
-import { applicableFixes } from '../plugins/limit-lens/scripts/lib/fixes.mjs';
-import { findings } from '../plugins/limit-lens/scripts/lib/findings.mjs';
-import { renderPlan } from '../plugins/limit-lens/scripts/lib/report.mjs';
+import { analyze } from '../plugins/limit-xray/scripts/lib/analyze.mjs';
+import { applicableFixes } from '../plugins/limit-xray/scripts/lib/fixes.mjs';
+import { findings } from '../plugins/limit-xray/scripts/lib/findings.mjs';
+import { renderPlan } from '../plugins/limit-xray/scripts/lib/report.mjs';
 import { NOW, minutesAgo, tempRoot, assistant, writeTranscript } from './helpers.mjs';
 
-const CLI = path.join(path.dirname(fileURLToPath(import.meta.url)), '..', 'plugins', 'limit-lens', 'scripts', 'limit-lens.mjs');
+const CLI = path.join(path.dirname(fileURLToPath(import.meta.url)), '..', 'plugins', 'limit-xray', 'scripts', 'limit-xray.mjs');
 const M = 1_000_000;
 const close = (actual, expected) => assert.ok(Math.abs(actual - expected) < 1e-9, `${actual} != ${expected}`);
 const ids = (fixes) => fixes.map((f) => f.id);

@@ -6,14 +6,14 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
-import { analyze } from '../plugins/limit-lens/scripts/lib/analyze.mjs';
-import { currentPlan, applyFixes, revertExperiment, planHistory } from '../plugins/limit-lens/scripts/lib/experiments.mjs';
-import { renderPlan } from '../plugins/limit-lens/scripts/lib/report.mjs';
+import { analyze } from '../plugins/limit-xray/scripts/lib/analyze.mjs';
+import { currentPlan, applyFixes, revertExperiment, planHistory } from '../plugins/limit-xray/scripts/lib/experiments.mjs';
+import { renderPlan } from '../plugins/limit-xray/scripts/lib/report.mjs';
 import { NOW, minutesAgo, tempRoot, assistant, writeTranscript, writeJson } from './helpers.mjs';
 
-const CLI = path.join(path.dirname(fileURLToPath(import.meta.url)), '..', 'plugins', 'limit-lens', 'scripts', 'limit-lens.mjs');
+const CLI = path.join(path.dirname(fileURLToPath(import.meta.url)), '..', 'plugins', 'limit-xray', 'scripts', 'limit-xray.mjs');
 const M = 1_000_000;
-const RULE = /Before you start a subagent or a workflow agent, use the `limit-lens:model-routing` skill/;
+const RULE = /Before you start a subagent or a workflow agent, use the `limit-xray:model-routing` skill/;
 
 // A config folder whose last week has main-conversation and agent spend on Opus.
 async function withAgents() {
@@ -32,7 +32,7 @@ test('the routing rule is the first question when agents spend and CLAUDE.md doe
   assert.equal(fixes[0].target, 'memory');
   assert.equal(fixes[0].kind, 'changes-work');
   assert.equal(fixes[0].savings.weekly, null);
-  fs.writeFileSync(memory, '# Mine\n\nUse limit-lens:model-routing before delegating.\n');
+  fs.writeFileSync(memory, '# Mine\n\nUse limit-xray:model-routing before delegating.\n');
   assert.ok(!currentPlan(root, report).some((f) => f.id === 'model-routing-rule'));
 });
 
@@ -48,9 +48,9 @@ test('apply adds the marked block to CLAUDE.md, keeping its content and line end
   fs.writeFileSync(memory, '# My rules\r\n\r\nBe brief.');
   const exp = applyFixes({ configDir: root, fixIds: ['model-routing-rule'], report, now: NOW });
   const text = fs.readFileSync(memory, 'utf8');
-  assert.ok(text.startsWith('# My rules\r\n\r\nBe brief.\r\n\r\n<!-- limit-lens:model-routing -->\r\n'), JSON.stringify(text));
+  assert.ok(text.startsWith('# My rules\r\n\r\nBe brief.\r\n\r\n<!-- limit-xray:model-routing -->\r\n'), JSON.stringify(text));
   assert.match(text, RULE);
-  assert.ok(text.endsWith('<!-- /limit-lens:model-routing -->\r\n'));
+  assert.ok(text.endsWith('<!-- /limit-xray:model-routing -->\r\n'));
   assert.ok(!fs.existsSync(settings));
   assert.equal(fs.readFileSync(exp.memoryBackup, 'utf8'), '# My rules\r\n\r\nBe brief.');
   assert.equal(exp.changes[0].kind, 'memory');

@@ -1,6 +1,6 @@
 # Research notes (2026-10-25)
 
-What limit-lens is built on, how each fact was checked, and what is still open. Measurements come from one heavy user's machine (14 GB of transcripts, Claude Code 2.1.310); only aggregates are recorded here.
+What limit-xray is built on, how each fact was checked, and what is still open. Measurements come from one heavy user's machine (14 GB of transcripts, Claude Code 2.1.310); only aggregates are recorded here.
 
 ## Transcript format (measured)
 
@@ -35,7 +35,7 @@ From https://platform.claude.com/docs/en/about-claude/pricing on 2026-10-25. Fas
 
 ## Landscape
 
-Other tools read the same transcripts: cost trackers (ccusage and others) and at least one "why did my tokens burn" analyzer. limit-lens differs by deduplicating by `message.id`, covering effort, thinking, cache lifetime and rebuilds, loops, workflow agents and plugin spend, running as a Claude Code plugin that hands the fixes to Claude, and working on Windows without a native binary.
+Other tools read the same transcripts: cost trackers (ccusage and others) and at least one "why did my tokens burn" analyzer. limit-xray differs by deduplicating by `message.id`, covering effort, thinking, cache lifetime and rebuilds, loops, workflow agents and plugin spend, running as a Claude Code plugin that hands the fixes to Claude, and working on Windows without a native binary.
 
 ## Open questions
 

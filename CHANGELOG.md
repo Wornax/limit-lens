@@ -2,17 +2,18 @@
 
 ## 0.3.0 (2026-10-25)
 
-- One command, `/limit-lens:analyze`: the report, then model routing, then each settings fix, then the other suggestions, from one pass over the transcripts. It replaces `/limit-lens:fix`; `compare` and `revert` move to `/limit-lens:analyze compare` and `/limit-lens:analyze revert`.
+- Renamed from limit-lens to **limit-xray**: several similar projects already used "limit lens" (including the `limitlens` npm package for Claude and Codex quotas). Commands are now `/limit-xray:analyze` and `/limit-xray:report`, the state folder is `<config dir>/limit-xray/`, and the repository is `Wornax/limit-xray`.
+- One command, `/limit-xray:analyze`: the report, then model routing, then each settings fix, then the other suggestions, from one pass over the transcripts. It replaces `/limit-xray:fix`; `compare` and `revert` move to `/limit-xray:analyze compare` and `/limit-xray:analyze revert`.
 - Model routing as a fix: a marked three-line block in the user's `CLAUDE.md` that makes Claude read the `model-routing` guide before it starts an agent. Offered first when agents spend and `CLAUDE.md` does not route already; applied by the script with a backup; revert removes exactly that block (and a `CLAUDE.md` that apply created), leaves an edited one alone, and writes `CLAUDE.md` only after settings succeed. A `CLAUDE.md` that is not UTF-8 is never rewritten.
 - `analyze`, `plan`, `apply`, `compare` and `revert` refuse `--days`, `--project` and `--anonymize`, which only the report takes.
 - Every question opens with what the thing is, in plain words ("What it is"): model routing, agents, effort, auto-compaction, cross-session messages, the security-guidance plugin, fast mode, the default model. The routing question is now "Turn on model routing for agents".
 - The analyze skill shows the report as its own message, in a fixed shape, before the first question.
 - Charts: the report draws spend by day, where it goes, by model, source and effort, and the biggest projects as text bars ("At a glance"); analyze opens with a "Summary" (what eats the limit, what happens next, the largest estimated saving) and, before applying, Claude sums up the chosen changes.
-- Dashboard: `analyze --open` writes `<config dir>/limit-lens/dashboard.html`, one self-contained page (no network, light and dark) with the spend, share cards, spend by day, bar charts, findings, every fix with what it is and its estimated saving, other suggestions and the costliest sessions, and opens it in the default browser (`LIMIT_LENS_NO_OPEN=1` turns the opening off).
+- Dashboard: `analyze --open` writes `<config dir>/limit-xray/dashboard.html`, one self-contained page (no network, light and dark) with the spend, share cards, spend by day, bar charts, findings, every fix with what it is and its estimated saving, other suggestions and the costliest sessions, and opens it in the default browser (`LIMIT_XRAY_NO_OPEN=1` turns the opening off).
 - The report counts spend per local day (`byDay` in `--json`).
-- "Changes in effect": the plan, analyze and the dashboard list every change limit-lens made that is still in place, newest first, setting by setting; when no fix applies, the summary says how many changes from earlier runs are already in effect.
-- `/limit-lens:report` runs only when you type it, for a read-only or shareable report, and lists the biggest projects.
-- `limit-lens analyze [--json]` on the command line; `plan` remains for scripts.
+- "Changes in effect": the plan, analyze and the dashboard list every change limit-xray made that is still in place, newest first, setting by setting; when no fix applies, the summary says how many changes from earlier runs are already in effect.
+- `/limit-xray:report` runs only when you type it, for a read-only or shareable report, and lists the biggest projects.
+- `limit-xray analyze [--json]` on the command line; `plan` remains for scripts.
 - The plan opens with what is eating your limit: the biggest lenses, the biggest projects, and plugin calls outside transcripts.
 - Each fix is labelled "cost only" or "changes how Claude works for you", with its effect, and names its biggest contributors when the transcripts can tell: projects, agent types, sessions past 300K tokens or plugin reviews.
 - Each fix estimates its weekly saving at list prices and says how. Model fixes use the Sonnet 5.5 discount for each Opus version (half for Opus 5.5, more for older Opus). Effort and auto-compaction say they cannot be estimated in advance and point to compare. The plan says the estimates do not add up.
@@ -28,16 +29,16 @@
 
 ## 0.2.0 (2026-10-25)
 
-- `/limit-lens:fix`: lists the fixes that apply to you as settings, asks about each one, and applies only the chosen ones through the script, with a backup and a recorded experiment.
-- `/limit-lens:fix compare`: spend per active day and per request, and lens shares, before and after the change; says when it is too early.
-- `/limit-lens:fix revert`: restores only the keys an experiment changed, skipping keys changed since.
+- `/limit-xray:fix`: lists the fixes that apply to you as settings, asks about each one, and applies only the chosen ones through the script, with a backup and a recorded experiment.
+- `/limit-xray:fix compare`: spend per active day and per request, and lens shares, before and after the change; says when it is too early.
+- `/limit-xray:fix revert`: restores only the keys an experiment changed, skipping keys changed since.
 - CLI subcommands `plan`, `apply`, `compare`, `revert`; the report skill can only run flag-only commands, and `apply`/`revert` are never pre-approved.
 
 ## 0.1.0 (2026-10-25)
 
-- `/limit-lens:report`: local report of API-equivalent spend by component, model, effort, source and entry point, with ranked findings and fixes checked against the Claude Code docs. Runs through the Bash tool with a permission rule pinned to the script.
+- `/limit-xray:report`: local report of API-equivalent spend by component, model, effort, source and entry point, with ranked findings and fixes checked against the Claude Code docs. Runs through the Bash tool with a permission rule pinned to the script.
 - Lenses: re-reading context, subagents and workflow agents, effort, model mix, cache rewritten mid-session (pause, model switch, other), loops and automated turns, setup at startup, plugins that call the model (in and outside transcripts), fast mode.
 - `security-guidance` log adapter, resolved the way the plugin resolves it, with coverage and project-scope notes.
 - Responses deduplicated by `message.id`; fast line classification from the first bytes; untrusted values sanitized; malformed lines skipped one by one.
-- `/limit-lens:model-routing`: guide for choosing Haiku, Sonnet or Opus and the effort level for delegated work.
+- `/limit-xray:model-routing`: guide for choosing Haiku, Sonnet or Opus and the effort level for delegated work.
 - `--days`, `--project`, `--anonymize`, `--json`, `--config-dir`, also as `--flag=value`.

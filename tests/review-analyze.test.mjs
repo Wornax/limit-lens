@@ -1,4 +1,4 @@
-// Regressions from the review of /limit-lens:analyze and the CLAUDE.md routing fix (2026-10-25).
+// Regressions from the review of /limit-xray:analyze and the CLAUDE.md routing fix (2026-10-25).
 // Synthetic data and temp folders only.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
@@ -6,11 +6,11 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
-import { analyze } from '../plugins/limit-lens/scripts/lib/analyze.mjs';
-import { currentPlan, applyFixes, revertExperiment, planHistory } from '../plugins/limit-lens/scripts/lib/experiments.mjs';
+import { analyze } from '../plugins/limit-xray/scripts/lib/analyze.mjs';
+import { currentPlan, applyFixes, revertExperiment, planHistory } from '../plugins/limit-xray/scripts/lib/experiments.mjs';
 import { NOW, minutesAgo, tempRoot, assistant, prompt, writeTranscript, writeJson } from './helpers.mjs';
 
-const CLI = path.join(path.dirname(fileURLToPath(import.meta.url)), '..', 'plugins', 'limit-lens', 'scripts', 'limit-lens.mjs');
+const CLI = path.join(path.dirname(fileURLToPath(import.meta.url)), '..', 'plugins', 'limit-xray', 'scripts', 'limit-xray.mjs');
 const M = 1_000_000;
 const run = (root, ...args) => spawnSync(process.execPath, [CLI, ...args, '--config-dir', root, '--now', new Date(NOW).toISOString()], { encoding: 'utf8' });
 
@@ -96,7 +96,7 @@ test('revert says so when CLAUDE.md still mentions the routing skill after the b
   const { root, report, memory } = await withAgents();
   fs.writeFileSync(memory, '# Mine\n');
   applyFixes({ configDir: root, fixIds: ['model-routing-rule'], report, now: NOW });
-  fs.appendFileSync(memory, '\nCopied: use the `limit-lens:model-routing` skill.\n');
+  fs.appendFileSync(memory, '\nCopied: use the `limit-xray:model-routing` skill.\n');
   const { restored, notes } = revertExperiment({ configDir: root, now: NOW + 1000 });
   assert.equal(restored.length, 1);
   assert.match(notes.join(' '), /still mentions/);

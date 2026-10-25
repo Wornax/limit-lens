@@ -38,7 +38,7 @@ const show = (v) => (v === undefined || v === null ? '(not set)' : `\`${JSON.str
 
 const GROUP_TITLES = { 'security-turn-review': 'security-guidance: the review after every turn' };
 const CONTRIBUTOR_TITLES = { project: 'Biggest projects', 'agent type': 'Biggest agent types', session: 'Largest sessions', review: 'Reviews' };
-// Project, agent type and session names come from disk and are cleaned; review names are limit-lens's own.
+// Project, agent type and session names come from disk and are cleaned; review names are limit-xray's own.
 // Session contributors are "project/session"; a folder name cannot contain "/", so each part is cleaned.
 export const contributorName = (c) => (c.kind === 'review' ? c.name : String(c.name).split('/').map(clean).join('/'));
 
@@ -141,7 +141,7 @@ function historyLines({ active = [], last, undo, warning }) {
   if (active.length) {
     lines.push('', '## Changes in effect', '');
     for (const e of active) lines.push(`- \`${e.id}\`, applied ${e.appliedAt.slice(0, 16).replace('T', ' ')} UTC: ${e.changes.map(describeChange).join('; ')}.`);
-    lines.push('', 'Compare them after a few days of normal use with `/limit-lens:analyze compare`.');
+    lines.push('', 'Compare them after a few days of normal use with `/limit-xray:analyze compare`.');
   } else if (last) {
     const fixesList = last.changes.map((c) => `\`${c.fixId}\``).join(', ');
     lines.push('', '## Last experiment', '', `- \`${last.id}\`, applied ${last.appliedAt.slice(0, 16).replace('T', ' ')} UTC: ${fixesList}${last.revertedAt ? ' (reverted)' : ''}. Compare it after a few days of normal use.`);
@@ -159,7 +159,7 @@ function historyLines({ active = [], last, undo, warning }) {
 
 // The fix plan: the diagnosis first, then one question per fix or per group of alternatives.
 export function renderPlan({ report, found = [], fixes, habits, settingsFile, last, undo, active = [], warning }) {
-  const lines = ['# limit-lens: fixes you can apply', ''];
+  const lines = ['# limit-xray: fixes you can apply', ''];
   if (report) lines.push(...diagnosisLines(report, found));
   lines.push(...questionLines(fixes, settingsFile));
   if (habits.length) lines.push('', '## Habits (only the user can do these)', '', ...habits.map((h) => `- ${h}`));
@@ -208,7 +208,7 @@ function summaryLines(r, found, fixes, dashboard, active = []) {
   const qs = questions(fixes);
   if (qs.length) {
     const first = qs[0].options[0].id === 'model-routing-rule' ? ', model routing first' : '';
-    lines.push(`- **What happens next:** Claude asks ${qs.length} question${qs.length === 1 ? '' : 's'}, one per fix below${first}. Nothing changes until you choose; each change is backed up, and \`/limit-lens:analyze revert\` undoes it.`);
+    lines.push(`- **What happens next:** Claude asks ${qs.length} question${qs.length === 1 ? '' : 's'}, one per fix below${first}. Nothing changes until you choose; each change is backed up, and \`/limit-xray:analyze revert\` undoes it.`);
   } else {
     lines.push('- **What happens next:** no fix applies right now, so nothing is asked; the other suggestions below are yours to try.');
   }
@@ -221,7 +221,7 @@ function summaryLines(r, found, fixes, dashboard, active = []) {
   return lines;
 }
 
-// `limit-lens analyze`: a summary, the report, the questions (the routing rule first), the suggestions no
+// `limit-xray analyze`: a summary, the report, the questions (the routing rule first), the suggestions no
 // question covers, and the history of applied changes.
 export function renderAnalyze({ report, found, fixes, habits = [], settingsFile, last, undo, active = [], warning, searched = [], dashboard = null }) {
   const head = renderMarkdown(report, found, { searched, withFixes: false, summary: report.totals.requests ? summaryLines(report, found, fixes, dashboard, active) : [] });
@@ -306,7 +306,7 @@ export function notCounted(r) {
   const total = r.totals.cost;
   const items = [
     'Usage from other computers, claude.ai chat and Cowork (they share your plan limits).',
-    'Plugins and scripts that call the API without leaving a log limit-lens can read.',
+    'Plugins and scripts that call the API without leaving a log limit-xray can read.',
   ];
   if (r.totals.estimatedCost > 0) items.push(`${pct(r.totals.estimatedCost, total)} of spend is on models missing from the price table, priced at the closest known model and marked with \`~\`.`);
   for (const n of r.notes || []) {
@@ -324,7 +324,7 @@ function historyNote(r) {
 export function renderMarkdown(r, found, { anonymize = false, searched = [], withFixes = true, summary = [] } = {}) {
   const name = anonymizer(anonymize, { shorten: true });
   const total = r.totals.cost;
-  const lines = [`# limit-lens: last ${r.window.days} day${r.window.days === 1 ? '' : 's'}`, ''];
+  const lines = [`# limit-xray: last ${r.window.days} day${r.window.days === 1 ? '' : 's'}`, ''];
   // The filter text is usually part of a real folder name, so --anonymize hides it too.
   const filterText = r.filter ? (anonymize ? 'the filter text (hidden by `--anonymize`)' : `\`${clean(r.filter.project)}\``) : null;
   if (filterText) lines.push(`Only projects whose folder name contains ${filterText}.`, '');

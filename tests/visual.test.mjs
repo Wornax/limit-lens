@@ -6,17 +6,17 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
-import { analyze } from '../plugins/limit-lens/scripts/lib/analyze.mjs';
-import { findings } from '../plugins/limit-lens/scripts/lib/findings.mjs';
-import { applicableFixes, routingFix, habitsWithFindings } from '../plugins/limit-lens/scripts/lib/fixes.mjs';
-import { bar, barBlock } from '../plugins/limit-lens/scripts/lib/charts.mjs';
-import { renderMarkdown } from '../plugins/limit-lens/scripts/lib/report.mjs';
-import { renderDashboard } from '../plugins/limit-lens/scripts/lib/dashboard.mjs';
+import { analyze } from '../plugins/limit-xray/scripts/lib/analyze.mjs';
+import { findings } from '../plugins/limit-xray/scripts/lib/findings.mjs';
+import { applicableFixes, routingFix, habitsWithFindings } from '../plugins/limit-xray/scripts/lib/fixes.mjs';
+import { bar, barBlock } from '../plugins/limit-xray/scripts/lib/charts.mjs';
+import { renderMarkdown } from '../plugins/limit-xray/scripts/lib/report.mjs';
+import { renderDashboard } from '../plugins/limit-xray/scripts/lib/dashboard.mjs';
 import { NOW, minutesAgo, daysAgo, tempRoot, assistant, writeTranscript, writeJson } from './helpers.mjs';
 
-const CLI = path.join(path.dirname(fileURLToPath(import.meta.url)), '..', 'plugins', 'limit-lens', 'scripts', 'limit-lens.mjs');
+const CLI = path.join(path.dirname(fileURLToPath(import.meta.url)), '..', 'plugins', 'limit-xray', 'scripts', 'limit-xray.mjs');
 const M = 1_000_000;
-const run = (root, args, env = {}) => spawnSync(process.execPath, [CLI, ...args, '--config-dir', root, '--now', new Date(NOW).toISOString()], { encoding: 'utf8', env: { ...process.env, LIMIT_LENS_NO_OPEN: '1', ...env } });
+const run = (root, args, env = {}) => spawnSync(process.execPath, [CLI, ...args, '--config-dir', root, '--now', new Date(NOW).toISOString()], { encoding: 'utf8', env: { ...process.env, LIMIT_XRAY_NO_OPEN: '1', ...env } });
 
 test('a bar is drawn in eighths of a character, and anything above zero shows', () => {
   assert.equal(bar(1, 10), '██████████');
@@ -97,7 +97,7 @@ test('analyze writes the dashboard next to its records and says where', () => {
   writeTranscript(projects, 'my-app/s.jsonl', [assistant({ ts: minutesAgo(30), model: 'claude-opus-5-5', usage: { output_tokens: M } })]);
   const res = run(root, ['analyze', '--open']);
   assert.equal(res.status, 0, res.stderr);
-  const file = path.join(root, 'limit-lens', 'dashboard.html');
+  const file = path.join(root, 'limit-xray', 'dashboard.html');
   assert.ok(fs.existsSync(file));
   assert.ok(res.stdout.includes(file), 'the output names the dashboard file');
   assert.match(res.stdout, /## Summary/);

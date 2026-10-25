@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { analyze } from '../plugins/limit-lens/scripts/lib/analyze.mjs';
+import { analyze } from '../plugins/limit-xray/scripts/lib/analyze.mjs';
 import { NOW, daysAgo, tempRoot, assistant, writeTranscript } from './helpers.mjs';
 
 const out = { output_tokens: 1_000_000 };

@@ -1,6 +1,6 @@
 // Apply chosen fixes to the user settings file (and the model-routing rule to the user's CLAUDE.md) and
 // keep a record of each change, so it can be measured (compare) and undone (revert).
-// State: <config dir>/limit-lens/experiments.json.
+// State: <config dir>/limit-xray/experiments.json.
 // A damaged state file is never overwritten: apply and revert refuse to run until it is fixed.
 import fs from 'node:fs';
 import path from 'node:path';
@@ -9,7 +9,7 @@ import { metrics } from './compare.mjs';
 import { readSettings, writeSettings, writeFileSafely, getPath, setPath, deletePath } from './settings.mjs';
 import { memoryPath, readMemory, hasRouting, addRouting, removeRouting, ROUTING_RULE } from './memory.mjs';
 
-export const stateDir = (configDir) => path.join(configDir, 'limit-lens');
+export const stateDir = (configDir) => path.join(configDir, 'limit-xray');
 const stateFile = (configDir) => path.join(stateDir(configDir), 'experiments.json');
 const backupDir = (configDir) => path.join(stateDir(configDir), 'backups');
 export const settingsPath = (configDir) => path.join(configDir, 'settings.json');
@@ -171,7 +171,7 @@ export function revertExperiment({ configDir, now, id = null }) {
         skipped.push(c);
         continue;
       }
-      if (hasRouting(text)) notes.push(`\`${c.file}\` still mentions limit-lens:model-routing outside the block limit-lens added; that part was left as is.`);
+      if (hasRouting(text)) notes.push(`\`${c.file}\` still mentions limit-xray:model-routing outside the block limit-xray added; that part was left as is.`);
       memoryUndo = { c, text };
       restored.push(c);
       continue;

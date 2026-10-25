@@ -1,12 +1,12 @@
-// The model-routing rule limit-lens can add to the user's CLAUDE.md (<config dir>/CLAUDE.md, the
+// The model-routing rule limit-xray can add to the user's CLAUDE.md (<config dir>/CLAUDE.md, the
 // instructions Claude Code loads in every session). It goes in as a marked block, so revert can find it
 // and remove exactly what was added, and leaves alone a block the user has edited since.
 import fs from 'node:fs';
 import path from 'node:path';
 
-export const ROUTING_START = '<!-- limit-lens:model-routing -->';
-export const ROUTING_END = '<!-- /limit-lens:model-routing -->';
-export const ROUTING_RULE = 'Before you start a subagent or a workflow agent, use the `limit-lens:model-routing` skill to choose its model and effort.';
+export const ROUTING_START = '<!-- limit-xray:model-routing -->';
+export const ROUTING_END = '<!-- /limit-xray:model-routing -->';
+export const ROUTING_RULE = 'Before you start a subagent or a workflow agent, use the `limit-xray:model-routing` skill to choose its model and effort.';
 
 export const memoryPath = (configDir) => path.join(configDir, 'CLAUDE.md');
 
@@ -25,7 +25,7 @@ export function readMemory(file) {
 }
 
 // Already routed: our block, or any mention of the skill the user wrote themselves.
-export const hasRouting = (text) => text.includes(ROUTING_START) || text.includes('limit-lens:model-routing');
+export const hasRouting = (text) => text.includes(ROUTING_START) || text.includes('limit-xray:model-routing');
 
 export const routingBlock = (eol) => [ROUTING_START, ROUTING_RULE, ROUTING_END].join(eol);
 

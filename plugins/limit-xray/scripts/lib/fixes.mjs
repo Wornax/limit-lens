@@ -16,7 +16,7 @@ import { resolveModel, sonnetSaving } from './pricing.mjs';
 
 const MIN_MODEL_SHARE = 0.05;
 const TOP = 3;
-const NOT_ESTIMABLE = 'cannot be estimated in advance; `/limit-lens:analyze compare` measures it after a few days.';
+const NOT_ESTIMABLE = 'cannot be estimated in advance; `/limit-xray:analyze compare` measures it after a few days.';
 
 // An environment variable set in the settings file's env block or in the shell running the plan.
 // With `flag`, values such as "0" and "false" count as unset.

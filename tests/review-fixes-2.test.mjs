@@ -5,16 +5,16 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { execFileSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
-import { analyze } from '../plugins/limit-lens/scripts/lib/analyze.mjs';
-import { findings } from '../plugins/limit-lens/scripts/lib/findings.mjs';
-import { renderMarkdown } from '../plugins/limit-lens/scripts/lib/report.mjs';
-import { requestCost } from '../plugins/limit-lens/scripts/lib/pricing.mjs';
-import { readSecurityGuidanceLog } from '../plugins/limit-lens/scripts/lib/plugins/security-guidance.mjs';
+import { analyze } from '../plugins/limit-xray/scripts/lib/analyze.mjs';
+import { findings } from '../plugins/limit-xray/scripts/lib/findings.mjs';
+import { renderMarkdown } from '../plugins/limit-xray/scripts/lib/report.mjs';
+import { requestCost } from '../plugins/limit-xray/scripts/lib/pricing.mjs';
+import { readSecurityGuidanceLog } from '../plugins/limit-xray/scripts/lib/plugins/security-guidance.mjs';
 import { NOW, minutesAgo, daysAgo, tempRoot, assistant, writeTranscript } from './helpers.mjs';
 
 const M = 1_000_000;
 const out = { output_tokens: M };
-const CLI = path.join(path.dirname(fileURLToPath(import.meta.url)), '..', 'plugins', 'limit-lens', 'scripts', 'limit-lens.mjs');
+const CLI = path.join(path.dirname(fileURLToPath(import.meta.url)), '..', 'plugins', 'limit-xray', 'scripts', 'limit-xray.mjs');
 const run = (projects, extra = {}) => analyze({ projectsDirs: [projects], now: NOW, days: 7, securityLog: null, ...extra });
 
 test('--json cleans folder and file names, keeping real session ids', () => {

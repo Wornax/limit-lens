@@ -2,7 +2,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import path from 'node:path';
-import { keptLines, classifyHead } from '../plugins/limit-lens/scripts/lib/lines.mjs';
+import { keptLines, classifyHead } from '../plugins/limit-xray/scripts/lib/lines.mjs';
 import { tempRoot } from './helpers.mjs';
 
 const assistantLine = (n, pad) => JSON.stringify({ parentUuid: 'p', message: { model: 'm', id: `id-${n}`, type: 'message', role: 'assistant', content: [{ type: 'text', text: 'é✓'.repeat(pad) }] }, type: 'assistant' });

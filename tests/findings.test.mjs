@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { analyze } from '../plugins/limit-lens/scripts/lib/analyze.mjs';
-import { findings } from '../plugins/limit-lens/scripts/lib/findings.mjs';
+import { analyze } from '../plugins/limit-xray/scripts/lib/analyze.mjs';
+import { findings } from '../plugins/limit-xray/scripts/lib/findings.mjs';
 import { NOW, tempRoot } from './helpers.mjs';
 
 // Start from the real report shape (all zeros), then set the numbers a scenario needs.

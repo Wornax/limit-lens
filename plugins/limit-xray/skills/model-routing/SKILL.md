@@ -7,7 +7,7 @@ description: Pick the right model (Haiku, Sonnet or Opus) and effort for each pi
 
 **Who this is for:** whoever starts agents: the main session, a workflow, or a subagent that can start its own. An agent working on a task it was given does it on the model it was started with, and if the task is above that model it hands the request back to whoever started it.
 
-**Why it matters:** the model you run on changes how fast you reach your usage limit, and Opus costs the most per token. Anthropic does not publish how plan limits weigh each model, but list prices are the best guide: output costs roughly Opus 1, Sonnet 1/2, Haiku 1/40, and a Haiku 5.5 request whose prompt is over 100K tokens pays a higher tier (about 1/8 of Opus on output), so keep Haiku agents short. See the [pricing page](https://platform.claude.com/docs/en/about-claude/pricing); `/limit-lens:report` shows which models your work actually ran on. A simple task on Opus wastes limit. A hard task on Haiku comes back wrong and costs more than doing it right once. A risky task on a weak model can break something that can't be undone.
+**Why it matters:** the model you run on changes how fast you reach your usage limit, and Opus costs the most per token. Anthropic does not publish how plan limits weigh each model, but list prices are the best guide: output costs roughly Opus 1, Sonnet 1/2, Haiku 1/40, and a Haiku 5.5 request whose prompt is over 100K tokens pays a higher tier (about 1/8 of Opus on output), so keep Haiku agents short. See the [pricing page](https://platform.claude.com/docs/en/about-claude/pricing); `/limit-xray:report` shows which models your work actually ran on. A simple task on Opus wastes limit. A hard task on Haiku comes back wrong and costs more than doing it right once. A risky task on a weak model can break something that can't be undone.
 
 **The rule:** use the smallest model that gets it right on the first try without putting anything risky at stake, and always say which one you picked.
 
@@ -21,7 +21,7 @@ So:
 - **Agent definitions:** set `model:` and `effort:` in the frontmatter of agents that always do the same kind of work.
 - **Workflows:** pass a model and an effort to every `agent()` call.
 - **Resuming an agent** (for example with SendMessage) keeps the model it started with. To change model, start a new agent with the full brief.
-- **Check afterwards:** `/limit-lens:report` shows which models your subagents and workflow agents actually ran on.
+- **Check afterwards:** `/limit-xray:report` shows which models your subagents and workflow agents actually ran on.
 
 ## 2. How to classify: three questions, in this order
 

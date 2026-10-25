@@ -1,9 +1,9 @@
 // Every question says what the thing is, in plain words, before asking about it. Synthetic data only.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { analyze } from '../plugins/limit-lens/scripts/lib/analyze.mjs';
-import { applicableFixes, routingFix } from '../plugins/limit-lens/scripts/lib/fixes.mjs';
-import { renderPlan } from '../plugins/limit-lens/scripts/lib/report.mjs';
+import { analyze } from '../plugins/limit-xray/scripts/lib/analyze.mjs';
+import { applicableFixes, routingFix } from '../plugins/limit-xray/scripts/lib/fixes.mjs';
+import { renderPlan } from '../plugins/limit-xray/scripts/lib/report.mjs';
 import { NOW, tempRoot } from './helpers.mjs';
 
 // A week where every fix applies.

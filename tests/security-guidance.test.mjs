@@ -2,8 +2,8 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import path from 'node:path';
-import { readSecurityGuidanceLog } from '../plugins/limit-lens/scripts/lib/plugins/security-guidance.mjs';
-import { analyze } from '../plugins/limit-lens/scripts/lib/analyze.mjs';
+import { readSecurityGuidanceLog } from '../plugins/limit-xray/scripts/lib/plugins/security-guidance.mjs';
+import { analyze } from '../plugins/limit-xray/scripts/lib/analyze.mjs';
 import { NOW, tempRoot } from './helpers.mjs';
 
 const close = (actual, expected) => assert.ok(Math.abs(actual - expected) < 1e-9, `${actual} != ${expected}`);

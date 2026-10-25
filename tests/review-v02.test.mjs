@@ -5,12 +5,12 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
-import { analyze } from '../plugins/limit-lens/scripts/lib/analyze.mjs';
-import { applicableFixes } from '../plugins/limit-lens/scripts/lib/fixes.mjs';
-import { readSettings, writeSettings, setPath } from '../plugins/limit-lens/scripts/lib/settings.mjs';
+import { analyze } from '../plugins/limit-xray/scripts/lib/analyze.mjs';
+import { applicableFixes } from '../plugins/limit-xray/scripts/lib/fixes.mjs';
+import { readSettings, writeSettings, setPath } from '../plugins/limit-xray/scripts/lib/settings.mjs';
 import { NOW, daysAgo, tempRoot, assistant, writeTranscript, writeJson } from './helpers.mjs';
 
-const CLI = path.join(path.dirname(fileURLToPath(import.meta.url)), '..', 'plugins', 'limit-lens', 'scripts', 'limit-lens.mjs');
+const CLI = path.join(path.dirname(fileURLToPath(import.meta.url)), '..', 'plugins', 'limit-xray', 'scripts', 'limit-xray.mjs');
 const DAY = 86_400_000;
 const iso = (ms) => new Date(ms).toISOString();
 const cli = (root, args, now = NOW) => spawnSync(process.execPath, [CLI, ...args, '--config-dir', root, '--now', iso(now)], { encoding: 'utf8' });
@@ -38,7 +38,7 @@ const ids = (fixes) => fixes.map((f) => f.id);
 test('a damaged experiments.json stops apply and revert instead of being overwritten', () => {
   const { root } = fixture();
   assert.equal(cli(root, ['apply', 'default-model-sonnet']).status, 0);
-  const state = path.join(root, 'limit-lens', 'experiments.json');
+  const state = path.join(root, 'limit-xray', 'experiments.json');
   const damaged = fs.readFileSync(state, 'utf8').slice(0, -5);
   fs.writeFileSync(state, damaged);
   const apply = cli(root, ['apply', 'subagent-model-sonnet']);

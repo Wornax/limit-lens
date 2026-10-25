@@ -57,7 +57,7 @@ function option(f, maxSaving, withTitle) {
   const who = kinds.map((k) => `<dt>${esc(CONTRIBUTORS[k] || k)}</dt><dd>${f.contributors.filter((c) => c.kind === k)
     .map((c) => `${esc(contributorName(c))} <span class="muted">${esc(usd(c.cost))}${c.detail ? `, ${esc(c.detail)}` : ''}</span>`).join('<br>')}</dd>`).join('');
   const saving = f.savings?.weekly == null
-    ? `<dd><span class="muted">Measured after a few days with <code>/limit-lens:analyze compare</code>.</span> ${rich(f.savings?.basis || '')}</dd>`
+    ? `<dd><span class="muted">Measured after a few days with <code>/limit-xray:analyze compare</code>.</span> ${rich(f.savings?.basis || '')}</dd>`
     : `<dd>${barList([{ label: 'per week', cost: f.savings.weekly, value: `about ${usd(f.savings.weekly)}` }], maxSaving, 'saving')}<span class="muted">${rich(f.savings.basis)}</span></dd>`;
   const costOnly = f.kind === 'cost-only';
   return `<div class="option">
@@ -105,7 +105,7 @@ ${q.options.map((f) => option(f, maxSaving, q.options.length > 1)).join('')}
   if (!active.length && last) history.push(`<p>Last change: <code>${esc(last.id)}</code>, applied ${when(last.appliedAt)} UTC: ${last.changes.map((c) => `<code>${esc(c.fixId)}</code>`).join(', ')}${last.revertedAt ? ' (reverted)' : ''}.</p>`);
   const inEffect = active.reduce((s, e) => s + e.changes.length, 0);
   if (undo) {
-    history.push(`<div class="applied"><p><code>/limit-lens:analyze revert</code> would undo <code>${esc(undo.id)}</code>:</p><ul>${undo.changes.map((c) => (c.kind === 'memory'
+    history.push(`<div class="applied"><p><code>/limit-xray:analyze revert</code> would undo <code>${esc(undo.id)}</code>:</p><ul>${undo.changes.map((c) => (c.kind === 'memory'
       ? `<li><code>${esc(c.file)}</code>: the model-routing rule is removed</li>`
       : `<li><code>${esc(c.path.join('.'))}</code> → ${c.hadKey ? show(c.restore) : 'removed'}</li>`)).join('')}</ul></div>`);
   }
@@ -116,7 +116,7 @@ ${q.options.map((f) => option(f, maxSaving, q.options.length > 1)).join('')}
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>limit-lens dashboard</title>
+<title>limit-xray dashboard</title>
 <style>
 :root {
   color-scheme: light;
@@ -224,7 +224,7 @@ footer ul { padding-left: 20px; }
 <body>
 <main>
 <header>
-<p class="brand">limit-lens</p>
+<p class="brand">limit-xray</p>
 <h1>Where your Claude Code limit goes</h1>
 <p class="sub">Last ${r.window.days} days, ${esc(day(r.window.from))} to ${esc(day(r.window.to))} · this computer · API list prices as of ${esc(r.pricesAsOf)}</p>
 </header>
@@ -233,7 +233,7 @@ footer ul { padding-left: 20px; }
 <p class="hero-label">API-equivalent spend</p>
 <p class="hero-value">${esc(usd(total))}</p>
 <p class="muted">${r.totals.requests.toLocaleString('en-US')} requests in ${r.totals.sessions.toLocaleString('en-US')} sessions${r.outside.cost ? `, plus ${esc(usd(r.outside.cost))} of plugin calls outside transcripts` : ''}. On a subscription this is not a bill: it shows how your usage limit was spent.</p>
-<p class="next">${qs.length ? `<strong>Next:</strong> Claude asks you about ${qs.length} fix${qs.length === 1 ? '' : 'es'} in the conversation, shown below. Nothing changes until you choose; every change is backed up, and <code>/limit-lens:analyze revert</code> undoes it.` : `<strong>Next:</strong> no fix applies right now${inEffect ? `: ${inEffect} change${inEffect === 1 ? '' : 's'} from earlier runs ${inEffect === 1 ? 'is' : 'are'} already in effect, listed at the end` : ''}. The suggestions below are yours to try.`}</p>
+<p class="next">${qs.length ? `<strong>Next:</strong> Claude asks you about ${qs.length} fix${qs.length === 1 ? '' : 'es'} in the conversation, shown below. Nothing changes until you choose; every change is backed up, and <code>/limit-xray:analyze revert</code> undoes it.` : `<strong>Next:</strong> no fix applies right now${inEffect ? `: ${inEffect} change${inEffect === 1 ? '' : 's'} from earlier runs ${inEffect === 1 ? 'is' : 'are'} already in effect, listed at the end` : ''}. The suggestions below are yours to try.`}</p>
 </section>
 
 <div class="tiles">
@@ -271,12 +271,12 @@ ${suggestions.length ? `<h2 class="section-title">Other suggestions</h2>
 ${sessions ? `<h2 class="section-title">Costliest sessions</h2>
 <section class="card scroll"><table><thead><tr><th>Project</th><th>Session</th><th>From</th><th>Spend</th><th>Requests</th><th>Avg context</th><th>Re-read</th></tr></thead><tbody>${sessions}</tbody></table><p class="muted" style="margin-top:8px">Main conversation only, not its subagents.</p></section>` : ''}
 
-${history.length ? `<h2 class="section-title">Changes in effect</h2><p class="note">What limit-lens changed earlier and is still in place, newest first. <code>/limit-lens:analyze compare</code> measures it; <code>/limit-lens:analyze revert</code> undoes the newest.</p><section class="card">${history.join('')}</section>` : ''}
+${history.length ? `<h2 class="section-title">Changes in effect</h2><p class="note">What limit-xray changed earlier and is still in place, newest first. <code>/limit-xray:analyze compare</code> measures it; <code>/limit-xray:analyze revert</code> undoes the newest.</p><section class="card">${history.join('')}</section>` : ''}
 
 <footer>
 <p><strong>Not counted</strong></p>
 <ul>${notCounted(r).map((x) => `<li>${rich(x)}</li>`).join('')}</ul>
-<p>Generated by limit-lens on ${esc(new Date(generatedAt).toLocaleString('en-US'))}. Everything stayed on this computer.</p>
+<p>Generated by limit-xray on ${esc(new Date(generatedAt).toLocaleString('en-US'))}. Everything stayed on this computer.</p>
 </footer>
 </main>
 <div class="tip" role="tooltip" hidden></div>

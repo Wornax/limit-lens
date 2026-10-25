@@ -1,12 +1,12 @@
 {
-  "name": "limit-lens",
+  "name": "limit-xray",
   "version": "0.3.0",
   "description": "Shows where your Claude Code usage limit goes and the fix for each sink. Reads local transcripts with a zero-dependency Node script, so finding out costs no tokens. Includes a model-routing skill.",
   "author": {
     "name": "Wornax"
   },
-  "homepage": "https://github.com/Wornax/limit-lens",
-  "repository": "https://github.com/Wornax/limit-lens",
+  "homepage": "https://github.com/Wornax/limit-xray",
+  "repository": "https://github.com/Wornax/limit-xray",
   "license": "MIT",
   "keywords": ["usage", "tokens", "cost", "limits", "optimization", "cache", "effort", "subagents"]
 }

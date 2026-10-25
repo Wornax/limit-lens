@@ -2,7 +2,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import path from 'node:path';
-import { readSettings, writeSettings, getPath, setPath } from '../plugins/limit-lens/scripts/lib/settings.mjs';
+import { readSettings, writeSettings, getPath, setPath } from '../plugins/limit-xray/scripts/lib/settings.mjs';
 import { tempRoot } from './helpers.mjs';
 
 test('setting a nested key keeps every other key and backs up the original first', () => {

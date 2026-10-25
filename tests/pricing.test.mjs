@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { requestCost, PRICES_AS_OF } from '../plugins/limit-lens/scripts/lib/pricing.mjs';
+import { requestCost, PRICES_AS_OF } from '../plugins/limit-xray/scripts/lib/pricing.mjs';
 
 const M = 1_000_000;
 const close = (actual, expected) => assert.ok(Math.abs(actual - expected) < 1e-9, `${actual} != ${expected}`);

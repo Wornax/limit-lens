@@ -19,7 +19,7 @@ export const minutesAgo = (n) => new Date(NOW - n * 60_000).toISOString();
 export const daysAgo = (n) => new Date(NOW - n * 86_400_000).toISOString();
 
 export function tempRoot() {
-  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'limit-lens-'));
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'limit-xray-'));
   const projects = path.join(root, 'projects');
   fs.mkdirSync(projects);
   return { root, projects };

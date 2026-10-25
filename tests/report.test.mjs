@@ -3,12 +3,12 @@ import assert from 'node:assert/strict';
 import { execFileSync } from 'node:child_process';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { analyze } from '../plugins/limit-lens/scripts/lib/analyze.mjs';
-import { findings } from '../plugins/limit-lens/scripts/lib/findings.mjs';
-import { renderMarkdown } from '../plugins/limit-lens/scripts/lib/report.mjs';
+import { analyze } from '../plugins/limit-xray/scripts/lib/analyze.mjs';
+import { findings } from '../plugins/limit-xray/scripts/lib/findings.mjs';
+import { renderMarkdown } from '../plugins/limit-xray/scripts/lib/report.mjs';
 import { NOW, minutesAgo, tempRoot, assistant, prompt, toolResult, writeTranscript, writeJson } from './helpers.mjs';
 
-const CLI = path.join(path.dirname(fileURLToPath(import.meta.url)), '..', 'plugins', 'limit-lens', 'scripts', 'limit-lens.mjs');
+const CLI = path.join(path.dirname(fileURLToPath(import.meta.url)), '..', 'plugins', 'limit-xray', 'scripts', 'limit-xray.mjs');
 
 function heavyFixture() {
   const { root, projects } = tempRoot();
@@ -79,12 +79,12 @@ test('an empty window says so and where it looked', async () => {
 test('the CLI prints markdown by default and JSON with --json', () => {
   const { root } = heavyFixture();
   const md = execFileSync(process.execPath, [CLI, '--config-dir', root, '--now', new Date(NOW).toISOString()], { encoding: 'utf8' });
-  assert.match(md, /^# limit-lens/m);
+  assert.match(md, /^# limit-xray/m);
   const json = JSON.parse(execFileSync(process.execPath, [CLI, '--config-dir', root, '--now', new Date(NOW).toISOString(), '--json'], { encoding: 'utf8' }));
   assert.ok(json.report.totals.requests > 0);
   assert.ok(Array.isArray(json.findings));
 });
 
 test('the CLI rejects unknown flags with usage help', () => {
-  assert.throws(() => execFileSync(process.execPath, [CLI, '--bogus'], { encoding: 'utf8', stdio: 'pipe' }), /Usage: limit-lens/);
+  assert.throws(() => execFileSync(process.execPath, [CLI, '--bogus'], { encoding: 'utf8', stdio: 'pipe' }), /Usage: limit-xray/);
 });

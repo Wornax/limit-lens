@@ -95,7 +95,7 @@ export function writeFileSafely(file, content, { backupDir, backupName, backupEx
     fs.copyFileSync(target, backup);
   }
   fs.mkdirSync(path.dirname(target), { recursive: true });
-  const tmp = `${target}.limit-lens-${process.pid}.tmp`;
+  const tmp = `${target}.limit-xray-${process.pid}.tmp`;
   try {
     if (mode !== null) fs.accessSync(target, fs.constants.W_OK);
     fs.writeFileSync(tmp, content, mode === null ? undefined : { mode });

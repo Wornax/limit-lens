@@ -4,12 +4,12 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
-import { analyze } from '../plugins/limit-lens/scripts/lib/analyze.mjs';
-import { applicableFixes } from '../plugins/limit-lens/scripts/lib/fixes.mjs';
-import { renderPlan } from '../plugins/limit-lens/scripts/lib/report.mjs';
+import { analyze } from '../plugins/limit-xray/scripts/lib/analyze.mjs';
+import { applicableFixes } from '../plugins/limit-xray/scripts/lib/fixes.mjs';
+import { renderPlan } from '../plugins/limit-xray/scripts/lib/report.mjs';
 import { NOW, tempRoot, assistant, writeTranscript, writeJson } from './helpers.mjs';
 
-const CLI = path.join(path.dirname(fileURLToPath(import.meta.url)), '..', 'plugins', 'limit-lens', 'scripts', 'limit-lens.mjs');
+const CLI = path.join(path.dirname(fileURLToPath(import.meta.url)), '..', 'plugins', 'limit-xray', 'scripts', 'limit-xray.mjs');
 const close = (actual, expected) => assert.ok(Math.abs(actual - expected) < 1e-9, `${actual} != ${expected}`);
 
 async function heavyAgents(days = 7) {
@@ -103,7 +103,7 @@ test('the plan opens with the diagnosis and asks one question per group', async 
   assert.match(md, /Options: `security-review-sonnet` or `security-stop-review-off`/);
 });
 
-test('names from disk are cleaned in the plan; limit-lens review names are left as written', async () => {
+test('names from disk are cleaned in the plan; limit-xray review names are left as written', async () => {
   const r = await heavyAgents();
   r.byProject['proj`[x](y)'] = { ...r.byProject['proj-a'], cost: 90, opusAgentCost: 35 };
   r.plugins.securityGuidance = { reviews: { stop: { count: 10, cost: 4 } }, outsideTranscriptsCost: 4 };

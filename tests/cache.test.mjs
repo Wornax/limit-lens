@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { analyze } from '../plugins/limit-lens/scripts/lib/analyze.mjs';
+import { analyze } from '../plugins/limit-xray/scripts/lib/analyze.mjs';
 import { NOW, minutesAgo, tempRoot, assistant, prompt, writeTranscript } from './helpers.mjs';
 
 const close = (actual, expected) => assert.ok(Math.abs(actual - expected) < 1e-9, `${actual} != ${expected}`);

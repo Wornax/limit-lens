@@ -5,17 +5,17 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { execFileSync, spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
-import { analyze } from '../plugins/limit-lens/scripts/lib/analyze.mjs';
-import { findings } from '../plugins/limit-lens/scripts/lib/findings.mjs';
-import { renderMarkdown } from '../plugins/limit-lens/scripts/lib/report.mjs';
-import { requestCost } from '../plugins/limit-lens/scripts/lib/pricing.mjs';
+import { analyze } from '../plugins/limit-xray/scripts/lib/analyze.mjs';
+import { findings } from '../plugins/limit-xray/scripts/lib/findings.mjs';
+import { renderMarkdown } from '../plugins/limit-xray/scripts/lib/report.mjs';
+import { requestCost } from '../plugins/limit-xray/scripts/lib/pricing.mjs';
 import { NOW, minutesAgo, daysAgo, tempRoot, assistant, prompt, writeTranscript, writeJson } from './helpers.mjs';
 
 const M = 1_000_000;
 const out = { output_tokens: M }; // $10 on Sonnet 5.5
 const close = (actual, expected) => assert.ok(Math.abs(actual - expected) < 1e-9, `${actual} != ${expected}`);
 const run = (projects, extra = {}) => analyze({ projectsDirs: [projects], now: NOW, days: 7, securityLog: null, ...extra });
-const CLI = path.join(path.dirname(fileURLToPath(import.meta.url)), '..', 'plugins', 'limit-lens', 'scripts', 'limit-lens.mjs');
+const CLI = path.join(path.dirname(fileURLToPath(import.meta.url)), '..', 'plugins', 'limit-xray', 'scripts', 'limit-xray.mjs');
 
 // Loops
 
@@ -152,7 +152,7 @@ test('--project leaves out the plugin log, which cannot be scoped to a project',
 test('the CLI rejects a bad --now and an empty --config-dir', () => {
   const bad = spawnSync(process.execPath, [CLI, '--now', 'nonsense'], { encoding: 'utf8' });
   assert.equal(bad.status, 2);
-  assert.match(bad.stderr, /Usage: limit-lens/);
+  assert.match(bad.stderr, /Usage: limit-xray/);
   const empty = spawnSync(process.execPath, [CLI, '--config-dir', ''], { encoding: 'utf8' });
   assert.equal(empty.status, 2);
 });
