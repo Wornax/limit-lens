@@ -84,7 +84,7 @@ if (opts.json) {
     s.sessionId = UUID.test(s.sessionId) ? s.sessionId : opts.anonymize ? `session-${i + 1}` : clean(s.sessionId).slice(0, 8);
     s.project = clean(s.project).slice(0, 80);
   });
-  if (report.filter) report.filter.project = clean(report.filter.project);
+  if (report.filter) report.filter.project = opts.anonymize ? 'hidden' : clean(report.filter.project);
   process.stdout.write(JSON.stringify({ report, findings: found }, null, 2) + '\n');
 } else {
   process.stdout.write(renderMarkdown(report, found, { anonymize: opts.anonymize, searched: projectsDirs }));

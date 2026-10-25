@@ -132,6 +132,17 @@ test('a --project filter is shown, and a filter with no match says so', async ()
   assert.ok(!md.includes('--days 30'));
 });
 
+test('--anonymize also hides the --project filter text', async () => {
+  const { root, projects } = tempRoot();
+  writeTranscript(projects, 'C--repos-acmecorp/s.jsonl', [assistant({ ts: minutesAgo(5), usage: out })]);
+  const hit = await run(projects, { project: 'acmecorp' });
+  assert.ok(!renderMarkdown(hit, findings(hit), { anonymize: true }).includes('acmecorp'));
+  const miss = await run(projects, { project: 'secretco' });
+  assert.ok(!renderMarkdown(miss, findings(miss), { anonymize: true }).includes('secretco'));
+  const json = execFileSync(process.execPath, [CLI, '--config-dir', root, '--now', new Date(NOW).toISOString(), '--json', '--anonymize', '--project', 'acmecorp'], { encoding: 'utf8' });
+  assert.ok(!json.includes('acmecorp'));
+});
+
 test('fixes follow the evidence: no auto-compact advice without huge contexts, no bounded-task advice without long agents', async () => {
   const r = await empty();
   r.totals.cost = 100;

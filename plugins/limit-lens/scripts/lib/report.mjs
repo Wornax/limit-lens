@@ -42,12 +42,13 @@ export function renderMarkdown(r, found, { anonymize = false, searched = [] } = 
   const name = anonymizer(anonymize, { shorten: true });
   const total = r.totals.cost;
   const lines = [`# limit-lens: last ${r.window.days} day${r.window.days === 1 ? '' : 's'}`, ''];
-  const filterName = r.filter ? clean(r.filter.project) : null;
-  if (filterName) lines.push(`Only projects whose folder name contains \`${filterName}\`.`, '');
+  // The filter text is usually part of a real folder name, so --anonymize hides it too.
+  const filterText = r.filter ? (anonymize ? 'the filter text (hidden by `--anonymize`)' : `\`${clean(r.filter.project)}\``) : null;
+  if (filterText) lines.push(`Only projects whose folder name contains ${filterText}.`, '');
 
   if (!r.totals.requests) {
     if (r.filter && !r.filter.matchingFolders) {
-      lines.push(`No project folder name contains \`${filterName}\`. Folder names are encoded paths (for example \`C--Users-me-repo\` or \`-home-me-repo\`): try a shorter part of the repository name.`);
+      lines.push(`No project folder name contains ${filterText}. Folder names are encoded paths (for example \`C--Users-me-repo\` or \`-home-me-repo\`): try a shorter part of the repository name.`);
       return lines.join('\n') + '\n';
     }
     lines.push(r.filter ? 'No Claude Code usage found in this window for the matching projects.' : 'No Claude Code usage found in this window.');
