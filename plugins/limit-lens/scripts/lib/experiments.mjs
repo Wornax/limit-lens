@@ -79,6 +79,12 @@ export function applyFixes({ configDir, fixIds, report, now }) {
     if (!fix) throw new Error(`"${id}" is not an applicable fix right now; run the plan again to see the current list.`);
     return fix;
   });
+  const byGroup = new Map();
+  for (const fix of chosen) {
+    if (!fix.group) continue;
+    if (byGroup.has(fix.group)) throw new Error(`"${byGroup.get(fix.group)}" and "${fix.id}" are alternatives; choose one.`);
+    byGroup.set(fix.group, fix.id);
+  }
   const changes = chosen.map((fix) => {
     const before = getPath(data, fix.path);
     setPath(data, fix.path, fix.value);

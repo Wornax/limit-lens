@@ -9,7 +9,7 @@ import { habits } from './lib/fixes.mjs';
 import { metrics, renderCompare } from './lib/compare.mjs';
 import { currentPlan, applyFixes, revertExperiment, findExperiment, planHistory, settingsPath } from './lib/experiments.mjs';
 import { userConfigDir } from './lib/settings.mjs';
-import { renderMarkdown, renderPlan, anonymizer, clean, UUID } from './lib/report.mjs';
+import { renderMarkdown, renderPlan, diagnosis, questions, contributorName, anonymizer, clean, UUID } from './lib/report.mjs';
 
 const USAGE = `Usage: limit-lens [command] [options]
 
@@ -126,8 +126,15 @@ try {
     const report = await analyze({ projectsDirs, now, days: 7, securityLog });
     if (opts.command === 'plan') {
       const fixes = currentPlan(settingsDir, report);
+      const found = findings(report);
       const plan = { settingsFile: settingsPath(settingsDir), fixes, habits: habits(report), ...planHistory(settingsDir) };
-      out(opts.json ? JSON.stringify(plan, null, 2) + '\n' : renderPlan(plan));
+      if (opts.json) {
+        // Names from disk are cleaned, as in the Markdown plan; the full report stays out of it.
+        for (const f of fixes) for (const c of f.contributors) c.name = contributorName(c);
+        out(JSON.stringify({ diagnosis: diagnosis(report, found), questions: questions(fixes).map((q) => ({ title: q.title, group: q.group, options: q.options.map((f) => f.id) })), ...plan }, null, 2) + '\n');
+      } else {
+        out(renderPlan({ report, found, ...plan }));
+      }
     } else {
       const exp = applyFixes({ configDir: settingsDir, fixIds: opts.ids, report, now });
       const lines = [`Applied ${exp.changes.length} fix${exp.changes.length === 1 ? '' : 'es'} to \`${exp.settingsFile}\` (experiment \`${exp.id}\`):`, ''];

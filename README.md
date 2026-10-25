@@ -38,10 +38,17 @@ Each finding lists fixes that use real settings and commands, checked against th
 
 `/limit-lens:fix` turns the report into changes you approve one by one:
 
-1. It lists the fixes that apply to you as settings, each with the setting, its current value, the new value and why. A fix is offered only when your usage shows the problem and your settings are not already that way.
-2. Claude asks about each one; you pick "Apply" or "Skip".
-3. The script, not Claude, writes the chosen keys into your user `settings.json`, after backing it up. The apply command also goes through Claude Code's own permission prompt, so you approve twice.
-4. After a few days of normal use, `/limit-lens:fix compare` shows spend per active day and per request, and the share of each lens, before and after. `/limit-lens:fix revert` puts back only the keys it changed, and leaves alone any key you changed since.
+1. It opens with what is eating your limit: the biggest lenses and the biggest projects.
+2. Then it lists the fixes that apply to you as settings. Each one shows:
+   - whether it is "cost only" or "changes how Claude works for you", and how;
+   - the setting, its current value and the new value, and why;
+   - the projects, agent types or sessions behind it;
+   - the weekly saving it estimates, and how. Effort and auto-compaction say they cannot be estimated in advance; compare measures them.
+
+   A fix is offered only when your usage shows the problem and your settings are not already that way.
+3. Claude asks one question per fix, with "Skip" first and "Show details" next. Alternatives, such as running the security-guidance per-turn review on Sonnet or dropping it, share one question, and the script refuses both together.
+4. The script, not Claude, writes the chosen keys into your user `settings.json`, after backing it up. The apply command also goes through Claude Code's own permission prompt, so you approve twice.
+5. After a few days of normal use, `/limit-lens:fix compare` shows spend per active day and per request, and the share of each lens, before and after. `/limit-lens:fix revert` puts back only the keys it changed, and leaves alone any key you changed since.
 
 Settings it can apply: `env.CLAUDE_CODE_SUBAGENT_MODEL`, per-model `effortLevel` under `modelSettings`, `autoCompactWindow`, `crossSessionInbound`, `fastMode`, `model`, and the security-guidance plugin's model variables. Habits such as `/clear` and `/compact` are listed for you to adopt; slash commands are yours to type. Records and backups live in `<config dir>/limit-lens/`.
 

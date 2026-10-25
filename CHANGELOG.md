@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.3.0 (2026-10-25)
+
+- `/limit-lens:fix` opens with what is eating your limit: the biggest lenses and the biggest projects.
+- Each fix is labelled "cost only" or "changes how Claude works for you", with its effect, and names its biggest contributors: projects, agent types, large-context sessions or plugin reviews.
+- Each fix estimates its weekly saving and says how; effort and auto-compaction say they cannot be estimated in advance and point to compare.
+- Alternatives (the security-guidance per-turn review on Sonnet, or dropped) share one question, and `apply` refuses both together.
+- Questions offer "Skip" first and "Show details" next.
+- The report attributes spend by project (main conversation and agents, Opus, high effort, requests over 200K) and lists the sessions with the most requests over 200K.
+- `plan --json` adds the diagnosis and the questions, with names from disk cleaned.
+
 ## 0.2.0 (2026-10-25)
 
 - `/limit-lens:fix`: lists the fixes that apply to you as settings, asks about each one, and applies only the chosen ones through the script, with a backup and a recorded experiment.

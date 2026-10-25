@@ -35,17 +35,90 @@ const NOTES = {
 
 const show = (v) => (v === undefined || v === null ? '(not set)' : `\`${JSON.stringify(v)}\``);
 
-// The fix plan the `fix` skill walks through with the user, one fix at a time.
-export function renderPlan({ fixes, habits, settingsFile, last, undo, warning }) {
-  const lines = ['# limit-lens: fixes you can apply', '', `Settings file: \`${settingsFile}\` (backed up before any change; new settings apply to new sessions).`, ''];
-  if (!fixes.length) lines.push('No settings fix applies right now: either nothing crossed its threshold, or your settings already have these values.', '');
-  fixes.forEach((f, i) => {
+const GROUP_TITLES = { 'security-turn-review': 'security-guidance: the review after every turn' };
+const CONTRIBUTOR_TITLES = { project: 'Biggest projects', 'agent type': 'Biggest agent types', session: 'Largest sessions', review: 'Reviews' };
+// Project, agent type and session names come from disk and are cleaned; review names are limit-lens's own.
+// Session contributors are "project/session"; a folder name cannot contain "/", so each part is cleaned.
+export const contributorName = (c) => (c.kind === 'review' ? c.name : String(c.name).split('/').map(clean).join('/'));
+
+// What is eating the limit: the biggest lenses and the biggest projects, before any question is asked.
+export function diagnosis(r, found) {
+  const total = r.totals.cost;
+  return {
+    spend: total,
+    days: r.window.days,
+    lenses: found.slice(0, 3).map((f) => ({ title: f.title, share: total ? f.cost / total : 0, cost: f.cost })),
+    projects: Object.entries(r.byProject || {})
+      .sort((a, b) => b[1].cost - a[1].cost)
+      .slice(0, 3)
+      .map(([name, b]) => ({ name: clean(name), share: total ? b.cost / total : 0, cost: b.cost })),
+  };
+}
+
+// Fixes grouped into questions: alternatives (same `group`) share one question.
+export function questions(fixes) {
+  const out = [];
+  const byGroup = new Map();
+  for (const f of fixes) {
+    if (f.group && byGroup.has(f.group)) {
+      byGroup.get(f.group).options.push(f);
+      continue;
+    }
+    const q = { group: f.group || null, title: f.group ? GROUP_TITLES[f.group] || f.title : f.title, options: [f] };
+    if (f.group) byGroup.set(f.group, q);
+    out.push(q);
+  }
+  return out;
+}
+
+function fixLines(f, indent) {
+  const pad = ' '.repeat(indent);
+  const lines = [
+    `${pad}- ${f.kind === 'cost-only' ? 'Cost only' : 'Changes how Claude works for you'}: ${f.effect}`,
+    `${pad}- Change: \`${f.path.join('.')}\` ${show(f.current)} -> ${show(f.value)}`,
+    `${pad}- Why: ${f.why}`,
+  ];
+  const kinds = [...new Set((f.contributors || []).map((c) => c.kind))];
+  for (const k of kinds) {
+    const items = f.contributors.filter((c) => c.kind === k).map((c) => `${contributorName(c)} (${usd(c.cost)}${c.detail ? `, ${c.detail}` : ''})`);
+    lines.push(`${pad}- ${CONTRIBUTOR_TITLES[k] || k}: ${items.join('; ')}`);
+  }
+  lines.push(
+    f.savings?.weekly == null
+      ? `${pad}- Estimated savings: ${f.savings?.basis || 'not estimated.'}`
+      : `${pad}- Estimated savings: up to ${usd(f.savings.weekly)} per week (API-equivalent). How: ${f.savings.basis}`,
+    `${pad}- Source: ${f.docs}`,
+  );
+  return lines;
+}
+
+// The fix plan the `fix` skill walks through with the user: the diagnosis first, then one question
+// per fix or per group of alternatives.
+export function renderPlan({ report, found = [], fixes, habits, settingsFile, last, undo, warning }) {
+  const lines = ['# limit-lens: fixes you can apply', ''];
+  if (report) {
+    const d = diagnosis(report, found);
     lines.push(
-      `${i + 1}. \`${f.id}\`: ${f.title}`,
-      `   - Change: \`${f.path.join('.')}\` ${show(f.current)} -> ${show(f.value)}`,
-      `   - Why: ${f.why}`,
-      `   - Source: ${f.docs}`,
+      '## What is eating your limit',
+      '',
+      `API-equivalent spend ${usd(d.spend)} in the last ${d.days} days (list prices; on a subscription, read dollars as a share of your limit).`,
+      '',
     );
+    for (const l of d.lenses) lines.push(`- ${l.title}: ${pct(l.cost, d.spend)} (${usd(l.cost)})`);
+    if (d.projects.length) lines.push(`- Biggest projects: ${d.projects.map((p) => `${p.name} ${pct(p.cost, d.spend)}`).join(', ')}`);
+    if (d.lenses.length > 1) lines.push('', 'These overlap: one request can count under several headings.');
+    lines.push('');
+  }
+  lines.push(`Settings file: \`${settingsFile}\` (backed up before any change; new settings apply to new sessions).`, '');
+  if (!fixes.length) lines.push('No settings fix applies right now: either nothing crossed its threshold, or your settings already have these values.', '');
+  questions(fixes).forEach((q, i) => {
+    lines.push(`### Question ${i + 1}: ${q.title}`, '');
+    if (q.options.length === 1) {
+      lines.push(...fixLines(q.options[0], 0), `Options: \`${q.options[0].id}\``, '');
+    } else {
+      for (const f of q.options) lines.push(`- \`${f.id}\`: ${f.title}`, ...fixLines(f, 2));
+      lines.push(`Options: ${q.options.map((f) => `\`${f.id}\``).join(' or ')} (alternatives: choose at most one)`, '');
+    }
   });
   if (habits.length) lines.push('', '## Habits (only the user can do these)', '', ...habits.map((h) => `- ${h}`));
   if (last) {

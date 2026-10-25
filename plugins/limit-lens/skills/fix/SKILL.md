@@ -26,9 +26,15 @@ Run plan and read its "Revert would restore" section: tell the user each setting
 
 ## Otherwise, walk through the fixes
 
-1. Run plan. If no fix applies, say so and list the habits.
-2. Ask about each fix with the AskUserQuestion tool: one question per fix, up to four per call, in the plan's order. Each question gives the fix title, the exact change (setting, current value, new value) and the why, with two options, "Apply" and "Skip". Do not recommend applying everything.
-3. If the user chose at least one fix, run apply with exactly the chosen ids. Apply asks for permission: that is the user's second check.
-4. Tell the user what changed (file, settings, backup), that new settings apply to new sessions, and the habits from the plan, which are slash commands only they can type. Then say to come back after a few days of normal use with `/limit-lens:fix compare`, or `/limit-lens:fix revert` to undo.
+1. Run plan. Before any question, show its "What is eating your limit" section in a few lines: the spend for the window, the biggest headings with their share, and the biggest projects. Say that the headings overlap and that dollars are API-equivalent list prices (on a subscription, a share of the limit, not a bill). If no fix applies, say so and list the habits.
+2. Ask one question per "### Question N" of the plan with the AskUserQuestion tool, up to four questions per call, in the plan's order. Each question says, in short:
+   - the title, and the label exactly as the plan gives it: "Cost only", or "Changes how Claude works for you" with its effect;
+   - the change (setting, current value, new value);
+   - the biggest one or two contributors and the estimated savings line (or that it cannot be estimated in advance).
+
+   Options, in this order: "Skip" first, then "Show details", then "Apply" for a single fix. A question with alternatives ("Options: `a` or `b`") gets one option per alternative in place of "Apply", named by what it does, never both together. Do not recommend applying everything, and do not soften a "Changes how Claude works for you" label.
+3. When the user picks "Show details", show that question's full block from the plan (why, every contributor with its cost, how the savings were estimated, source), then ask that question again with "Skip" first and the apply options.
+4. If the user chose at least one fix, run apply with exactly the chosen ids. Apply asks for permission: that is the user's second check. It refuses two alternatives from the same question.
+5. Tell the user what changed (file, settings, backup), that new settings apply to new sessions, and the habits from the plan, which are slash commands only they can type. Then say to come back after a few days of normal use with `/limit-lens:fix compare`, or `/limit-lens:fix revert` to undo.
 
 If the AskUserQuestion tool is not available, for example in a non-interactive run, list the fixes and stop without applying anything.
