@@ -5,7 +5,7 @@ import { NOW, minutesAgo, daysAgo, tempRoot, assistant, prompt, writeTranscript 
 
 const M = 1_000_000;
 const close = (actual, expected) => assert.ok(Math.abs(actual - expected) < 1e-9, `${actual} != ${expected}`);
-const run = (projects, extra = {}) => analyze({ projectsDirs: [projects], now: NOW, days: 7, securityLogDir: null, ...extra });
+const run = (projects, extra = {}) => analyze({ projectsDirs: [projects], now: NOW, days: 7, securityLog: null, ...extra });
 
 test('a response written as one line per content block is counted once', async () => {
   const { projects } = tempRoot();

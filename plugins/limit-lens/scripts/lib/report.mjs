@@ -4,23 +4,35 @@ import { usd, pct, tokens, topEntries, modelName } from './format.mjs';
 
 const ENTRYPOINT_NAMES = { cli: 'terminal', 'claude-desktop': 'desktop app', 'sdk-py': 'Python SDK', 'sdk-ts': 'TypeScript SDK' };
 
-export function anonymizer(enabled) {
+// Folder and file names come from disk and can contain anything (Linux allows newlines):
+// keep only characters that cannot change the Markdown around them.
+export const clean = (s) => String(s).replace(/[^\w.@+-]/g, '_');
+
+export function anonymizer(enabled, { shorten = false } = {}) {
   const names = new Map();
   return (project) => {
-    if (!enabled) return project.length > 40 ? `…${project.slice(-39)}` : project;
-    if (!names.has(project)) names.set(project, `project-${names.size + 1}`);
-    return names.get(project);
+    if (enabled) {
+      if (!names.has(project)) names.set(project, `project-${names.size + 1}`);
+      return names.get(project);
+    }
+    return shorten && project.length > 40 ? `…${project.slice(-39)}` : project;
   };
 }
 
+const NOTES = {
+  'plugin-log-unscoped': 'The security-guidance log is not split by project, so its spend is left out of a `--project` report.',
+  'plugin-log-partial': 'The security-guidance log rotates at 1 MB and does not reach back to the start of this window, so some plugin spend is missing.',
+  'unreadable-transcript': 'Some transcript files could not be read and were skipped.',
+};
+
 export function renderMarkdown(r, found, { anonymize = false, searched = [] } = {}) {
-  const name = anonymizer(anonymize);
+  const name = anonymizer(anonymize, { shorten: true });
   const total = r.totals.cost;
   const lines = [`# limit-lens: last ${r.window.days} day${r.window.days === 1 ? '' : 's'}`, ''];
 
   if (!r.totals.requests) {
     lines.push('No Claude Code usage found in this window.');
-    if (searched.length) lines.push('', 'Looked in:', ...searched.map((d) => `- ${d}`));
+    if (searched.length) lines.push('', 'Looked in:', ...searched.map((d) => `- \`${String(d).replace(/`/g, '')}\``));
     lines.push('', 'Try a longer window (`--days 30`) or point at another folder (`--config-dir`).');
     return lines.join('\n') + '\n';
   }
@@ -69,7 +81,7 @@ export function renderMarkdown(r, found, { anonymize = false, searched = [] } = 
     lines.push('## Costliest sessions', '', '| Project | Session | From | Spend | Requests | Avg context | Re-read |', '| :- | :- | :- | -: | -: | -: | -: |');
     for (const s of r.topSessions) {
       lines.push(
-        `| ${name(s.project)} | ${s.sessionId.slice(0, 8)} | ${ENTRYPOINT_NAMES[s.entrypoint] || s.entrypoint} | ${usd(s.cost)} | ${s.requests.toLocaleString('en-US')} | ${tokens(s.avgPromptTokens)} | ${pct(s.rereadCost, s.cost)} |`,
+        `| ${clean(name(s.project))} | ${clean(s.sessionId.slice(0, 8))} | ${ENTRYPOINT_NAMES[s.entrypoint] || clean(s.entrypoint)} | ${usd(s.cost)} | ${s.requests.toLocaleString('en-US')} | ${tokens(s.avgPromptTokens)} | ${pct(s.rereadCost, s.cost)} |`,
       );
     }
     lines.push('', 'Spend per session counts its main conversation only, not its subagents.', '');
@@ -79,5 +91,6 @@ export function renderMarkdown(r, found, { anonymize = false, searched = [] } = 
   lines.push('- Usage from other computers, claude.ai chat and Cowork (they share your plan limits).');
   lines.push('- Plugins and scripts that call the API without leaving a log limit-lens can read.');
   if (r.totals.estimatedCost > 0) lines.push(`- ${pct(r.totals.estimatedCost, total)} of spend is on models missing from the price table and was priced at a fallback.`);
+  for (const n of r.notes || []) if (NOTES[n]) lines.push(`- ${NOTES[n]}`);
   return lines.join('\n') + '\n';
 }

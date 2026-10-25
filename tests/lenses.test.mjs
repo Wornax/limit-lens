@@ -6,7 +6,7 @@ import { NOW, minutesAgo, tempRoot, assistant, prompt, toolResult, writeTranscri
 const M = 1_000_000;
 const out = { output_tokens: M }; // $10 on Sonnet 5.5
 const close = (actual, expected) => assert.ok(Math.abs(actual - expected) < 1e-9, `${actual} != ${expected}`);
-const run = (projects) => analyze({ projectsDirs: [projects], now: NOW, days: 7, securityLogDir: null });
+const run = (projects) => analyze({ projectsDirs: [projects], now: NOW, days: 7, securityLog: null });
 
 test('each response is attributed to the prompt that started its turn', async () => {
   const { projects } = tempRoot();

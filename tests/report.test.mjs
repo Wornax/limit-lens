@@ -31,7 +31,7 @@ function heavyFixture() {
 
 test('the report never contains prompt or tool output text', async () => {
   const { projects } = heavyFixture();
-  const r = await analyze({ projectsDirs: [projects], now: NOW, days: 7, securityLogDir: null });
+  const r = await analyze({ projectsDirs: [projects], now: NOW, days: 7, securityLog: null });
   const md = renderMarkdown(r, findings(r));
   assert.ok(!md.includes('PRIVATE PROMPT'));
   assert.ok(!md.includes('acme payroll'));
@@ -40,7 +40,7 @@ test('the report never contains prompt or tool output text', async () => {
 
 test('--anonymize replaces folder names', async () => {
   const { projects } = heavyFixture();
-  const r = await analyze({ projectsDirs: [projects], now: NOW, days: 7, securityLogDir: null });
+  const r = await analyze({ projectsDirs: [projects], now: NOW, days: 7, securityLog: null });
   const md = renderMarkdown(r, findings(r), { anonymize: true });
   assert.ok(!md.includes('alice'));
   assert.ok(!md.includes('acme'));
@@ -49,7 +49,7 @@ test('--anonymize replaces folder names', async () => {
 
 test('a heavy report stays short enough to paste into a conversation', async () => {
   const { projects } = heavyFixture();
-  const r = await analyze({ projectsDirs: [projects], now: NOW, days: 7, securityLogDir: null });
+  const r = await analyze({ projectsDirs: [projects], now: NOW, days: 7, securityLog: null });
   const md = renderMarkdown(r, findings(r));
   const words = md.split(/\s+/).length;
   assert.ok(words < 1600, `report has ${words} words`);
@@ -59,7 +59,7 @@ test('a heavy report stays short enough to paste into a conversation', async () 
 
 test('an empty window says so and where it looked', async () => {
   const { projects } = tempRoot();
-  const r = await analyze({ projectsDirs: [projects], now: NOW, days: 7, securityLogDir: null });
+  const r = await analyze({ projectsDirs: [projects], now: NOW, days: 7, securityLog: null });
   const md = renderMarkdown(r, findings(r), { searched: [projects] });
   assert.match(md, /No Claude Code usage found/);
   assert.ok(md.includes(projects));

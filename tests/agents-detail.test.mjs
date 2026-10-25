@@ -13,7 +13,7 @@ test('agent lenses split their spend into reads, writes and output, with average
     assistant({ ts: minutesAgo(27), usage: { cache_read_input_tokens: 100_000 } }),
   ]);
   writeJson(projects, 'p/s1/subagents/agent-a.meta.json', { agentType: 'general-purpose' });
-  const r = await analyze({ projectsDirs: [projects], now: NOW, days: 7, securityLogDir: null });
+  const r = await analyze({ projectsDirs: [projects], now: NOW, days: 7, securityLog: null });
   const s = r.agents.subagent;
   close(s.components.cacheWrite, 0.25); // 100K Sonnet 5.5 5m writes
   close(s.components.cacheRead, 0.01);
@@ -27,7 +27,7 @@ test('fast mode spend is tracked', async () => {
     assistant({ ts: minutesAgo(5), model: 'claude-opus-5-5', usage: { output_tokens: 1_000_000, speed: 'fast' } }),
     assistant({ ts: minutesAgo(4), model: 'claude-opus-5-5', usage: { output_tokens: 1_000_000 } }),
   ]);
-  const r = await analyze({ projectsDirs: [projects], now: NOW, days: 7, securityLogDir: null });
+  const r = await analyze({ projectsDirs: [projects], now: NOW, days: 7, securityLog: null });
   close(r.fastMode.cost, 40);
   assert.equal(r.fastMode.requests, 1);
 });

@@ -21,15 +21,15 @@ export function classifyHead(head, wantPrompts) {
   return null;
 }
 
-// Yields { kind, text } for kept lines only.
-export async function* keptLines(file, { wantPrompts }) {
+// Yields { kind, text } for kept lines only. chunkSize and headSize are there for tests.
+export async function* keptLines(file, { wantPrompts, chunkSize = CHUNK, headSize = HEAD }) {
   let parts = [];
   let size = 0;
   let kind; // undefined = undecided, null = skip
   const decide = () => {
     const head = parts.length === 1 ? parts[0] : Buffer.concat(parts);
     parts = [head];
-    kind = classifyHead(head.subarray(0, HEAD), wantPrompts);
+    kind = classifyHead(head.subarray(0, headSize), wantPrompts);
     if (kind === null) {
       parts = [];
       size = 0;
@@ -40,7 +40,7 @@ export async function* keptLines(file, { wantPrompts }) {
     return { kind, text: buf.toString('utf8') };
   };
 
-  for await (const chunk of fs.createReadStream(file, { highWaterMark: CHUNK })) {
+  for await (const chunk of fs.createReadStream(file, { highWaterMark: chunkSize })) {
     let start = 0;
     while (start < chunk.length) {
       const nl = chunk.indexOf(10, start);
@@ -49,7 +49,7 @@ export async function* keptLines(file, { wantPrompts }) {
         parts.push(chunk.subarray(start, end));
         size += end - start;
       }
-      if (kind === undefined && (size >= HEAD || nl !== -1) && size > 0) decide();
+      if (kind === undefined && (size >= headSize || nl !== -1) && size > 0) decide();
       if (nl === -1) break;
       if (kind) yield emit();
       parts = [];

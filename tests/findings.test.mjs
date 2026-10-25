@@ -6,7 +6,7 @@ import { NOW, tempRoot } from './helpers.mjs';
 
 // Start from the real report shape (all zeros), then set the numbers a scenario needs.
 async function emptyReport() {
-  return analyze({ projectsDirs: [tempRoot().projects], now: NOW, days: 7, securityLogDir: null });
+  return analyze({ projectsDirs: [tempRoot().projects], now: NOW, days: 7, securityLog: null });
 }
 
 test('a quiet report produces no findings', async () => {

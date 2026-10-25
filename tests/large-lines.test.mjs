@@ -23,7 +23,7 @@ test('huge lines spanning several read chunks do not break attribution', async (
     bigAnswer,
     assistant({ ts: minutesAgo(6), usage: { output_tokens: 1_000_000 } }),
   ]);
-  const r = await analyze({ projectsDirs: [projects], now: NOW, days: 7, securityLogDir: null });
+  const r = await analyze({ projectsDirs: [projects], now: NOW, days: 7, securityLog: null });
   assert.equal(r.totals.requests, 2);
   close(r.turns.automated.cost, 20);
 });
@@ -36,7 +36,7 @@ test('Windows line endings are handled', async () => {
   ]);
   const fs = await import('node:fs');
   fs.writeFileSync(file, fs.readFileSync(file, 'utf8').replace(/\n/g, '\r\n'));
-  const r = await analyze({ projectsDirs: [projects], now: NOW, days: 7, securityLogDir: null });
+  const r = await analyze({ projectsDirs: [projects], now: NOW, days: 7, securityLog: null });
   assert.equal(r.totals.requests, 1);
   close(r.turns.human.cost, 10);
 });

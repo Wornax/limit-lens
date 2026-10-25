@@ -4,7 +4,7 @@ import { analyze } from '../plugins/limit-lens/scripts/lib/analyze.mjs';
 import { NOW, minutesAgo, tempRoot, assistant, prompt, writeTranscript } from './helpers.mjs';
 
 const close = (actual, expected) => assert.ok(Math.abs(actual - expected) < 1e-9, `${actual} != ${expected}`);
-const run = (projects) => analyze({ projectsDirs: [projects], now: NOW, days: 7, securityLogDir: null });
+const run = (projects) => analyze({ projectsDirs: [projects], now: NOW, days: 7, securityLog: null });
 const write1h = (n) => ({ cache_creation_input_tokens: n, cache_creation: { ephemeral_5m_input_tokens: 0, ephemeral_1h_input_tokens: n } });
 const write5m = (n) => ({ cache_creation_input_tokens: n, cache_creation: { ephemeral_5m_input_tokens: n, ephemeral_1h_input_tokens: 0 } });
 

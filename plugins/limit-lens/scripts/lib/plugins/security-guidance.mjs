@@ -1,16 +1,24 @@
-// Adapter for the security-guidance plugin's debug log (<config>/security/log.txt, rotated to log.txt.1).
-// Each review writes: "[YYYY-MM-DD HH:MM:SS.mmm] Review usage: review=<stop|commit|push> ... est_cost_usd=<n>[~]".
-// Stop reviews call the API directly, so they never appear in transcripts. Commit and push reviews run
-// through Claude Code and already show up as SDK sessions, so only stop reviews count as outside spend.
+// Adapter for the security-guidance plugin's debug log. The plugin writes to
+// SECURITY_GUIDANCE_DEBUG_LOG or <state dir>/log.txt and rotates the full file to "<file>.1" at 1 MiB.
+// Each review writes: "[YYYY-MM-DD HH:MM:SS.mmm] Review usage: review=<stop|commit|push> ... est_cost_usd=<n>[~]"
+// in local time. Stop reviews call the API directly, so they never appear in transcripts. Commit and
+// push reviews run through Claude Code and already show up as SDK sessions, so only stop reviews
+// count as spend outside transcripts.
 import fs from 'node:fs';
-import path from 'node:path';
 
-const LINE = /^\[(\d{4})-(\d{2})-(\d{2}) (\d{2}):(\d{2}):(\d{2})(?:\.(\d{1,3}))?\] Review usage: (.*)$/;
+const STAMP = /^\[(\d{4})-(\d{2})-(\d{2}) (\d{2}):(\d{2}):(\d{2})(?:\.(\d{1,3}))?\] (.*)$/;
+const USAGE = /^Review usage: (.*)$/;
 
-export function readSecurityGuidanceLog(dir, fromMs, toMs) {
-  const files = ['log.txt.1', 'log.txt'].map((f) => path.join(dir, f)).filter((f) => fs.existsSync(f));
+export function readSecurityGuidanceLog(logFile, fromMs, toMs) {
+  const files = [`${logFile}.1`, logFile].filter((f) => {
+    try {
+      return fs.statSync(f).isFile();
+    } catch {
+      return false;
+    }
+  });
   if (files.length === 0) return null;
-  const result = { reviews: {}, outsideTranscriptsCost: 0, estimated: false };
+  const result = { reviews: Object.create(null), outsideTranscriptsCost: 0, estimated: false, coversFrom: null };
   for (const file of files) {
     let text;
     try {
@@ -19,16 +27,23 @@ export function readSecurityGuidanceLog(dir, fromMs, toMs) {
       continue;
     }
     for (const line of text.split(/\r?\n/)) {
-      const m = line.match(LINE);
+      const m = line.match(STAMP);
       if (!m) continue;
       const [, y, mo, d, h, mi, s, ms = '0', rest] = m;
       const ts = new Date(+y, +mo - 1, +d, +h, +mi, +s, +ms.padEnd(3, '0')).getTime();
-      if (ts < fromMs || ts > toMs) continue;
-      const fields = Object.fromEntries(rest.split(/\s+/).map((kv) => kv.split('=')));
+      if (Number.isNaN(ts)) continue;
+      if (result.coversFrom === null || ts < result.coversFrom) result.coversFrom = ts;
+      const u = rest.match(USAGE);
+      if (!u || ts < fromMs || ts > toMs) continue;
+      const fields = Object.create(null);
+      for (const kv of u[1].split(/\s+/)) {
+        const i = kv.indexOf('=');
+        if (i > 0) fields[kv.slice(0, i)] = kv.slice(i + 1);
+      }
       const raw = fields.est_cost_usd || '0';
       if (raw.endsWith('~')) result.estimated = true;
       const cost = Number.parseFloat(raw) || 0;
-      const kind = fields.review || 'unknown';
+      const kind = ['stop', 'commit', 'push'].includes(fields.review) ? fields.review : 'other';
       const r = (result.reviews[kind] ??= { count: 0, cost: 0 });
       r.count += 1;
       r.cost += cost;

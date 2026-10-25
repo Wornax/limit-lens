@@ -36,7 +36,7 @@ test('review usage lines inside the window are summed by review kind', () => {
   const { root } = tempRoot();
   const dir = path.join(root, 'security');
   writeLogs(dir);
-  const r = readSecurityGuidanceLog(dir, NOW - 7 * 86_400_000, NOW);
+  const r = readSecurityGuidanceLog(path.join(dir, 'log.txt'), NOW - 7 * 86_400_000, NOW);
   assert.equal(r.reviews.stop.count, 2);
   close(r.reviews.stop.cost, 0.5);
   close(r.reviews.commit.cost, 0.5);
@@ -45,14 +45,14 @@ test('review usage lines inside the window are summed by review kind', () => {
 });
 
 test('a missing log folder yields nothing', () => {
-  const r = readSecurityGuidanceLog(path.join(tempRoot().root, 'nope'), 0, NOW);
+  const r = readSecurityGuidanceLog(path.join(tempRoot().root, 'nope', 'log.txt'), 0, NOW);
   assert.equal(r, null);
 });
 
 test('analyze reports plugin calls that never reach the transcripts', async () => {
   const { root, projects } = tempRoot();
   writeLogs(path.join(root, 'security'));
-  const r = await analyze({ projectsDirs: [projects], now: NOW, days: 7, securityLogDir: path.join(root, 'security') });
+  const r = await analyze({ projectsDirs: [projects], now: NOW, days: 7, securityLog: path.join(root, 'security', 'log.txt') });
   close(r.outside.cost, 0.5);
   close(r.plugins.securityGuidance.reviews.commit.cost, 0.5);
 });

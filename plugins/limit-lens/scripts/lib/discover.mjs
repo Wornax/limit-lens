@@ -3,17 +3,27 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 
-// Default transcript folders: CLAUDE_CONFIG_DIR wins; otherwise ~/.claude and the XDG location.
+// Default config folders: CLAUDE_CONFIG_DIR wins; otherwise ~/.claude and the XDG location.
 export function defaultConfigDirs(env = process.env) {
   if (env.CLAUDE_CONFIG_DIR) return [env.CLAUDE_CONFIG_DIR];
   const home = os.homedir();
   return [path.join(home, '.claude'), path.join(env.XDG_CONFIG_HOME || path.join(home, '.config'), 'claude')];
 }
 
+// The security-guidance plugin's log file, resolved the way the plugin resolves it.
+export function securityGuidanceLogFile(configDir, env = process.env) {
+  if (configDir) return path.join(configDir, 'security', 'log.txt');
+  if (env.SECURITY_GUIDANCE_DEBUG_LOG) return env.SECURITY_GUIDANCE_DEBUG_LOG;
+  const stateDir = env.SECURITY_WARNINGS_STATE_DIR
+    || (env.CLAUDE_CONFIG_DIR ? path.join(env.CLAUDE_CONFIG_DIR, 'security') : path.join(os.homedir(), '.claude', 'security'));
+  return path.join(stateDir, 'log.txt');
+}
+
 // Each transcript: { file, project, sessionId, kind: 'main' | 'subagent' | 'workflow', metaFile }.
+// Linked folders (symlinks, Windows junctions) are followed once each.
 export function findTranscripts(projectsDirs, sinceMs) {
   const out = [];
-  const seenReal = new Set();
+  const visited = new Set();
   for (const dir of projectsDirs) {
     let real;
     try {
@@ -21,14 +31,39 @@ export function findTranscripts(projectsDirs, sinceMs) {
     } catch {
       continue;
     }
-    if (seenReal.has(real)) continue;
-    seenReal.add(real);
-    walk(real, real, sinceMs, out);
+    if (visited.has(real)) continue;
+    visited.add(real);
+    let entries;
+    try {
+      entries = fs.readdirSync(real, { withFileTypes: true });
+    } catch {
+      continue;
+    }
+    for (const e of entries) {
+      const projectPath = path.join(real, e.name);
+      const target = resolveDir(projectPath, e, visited);
+      if (target) walk(target, e.name, [], sinceMs, out, visited);
+    }
   }
   return out;
 }
 
-function walk(root, dir, sinceMs, out) {
+// Return the real path of a directory entry (following links), or null if it is not a new directory.
+function resolveDir(p, entry, visited) {
+  if (!entry.isDirectory() && !entry.isSymbolicLink()) return null;
+  let real;
+  try {
+    real = fs.realpathSync(p);
+    if (!fs.statSync(real).isDirectory()) return null;
+  } catch {
+    return null;
+  }
+  if (visited.has(real)) return null;
+  visited.add(real);
+  return real;
+}
+
+function walk(dir, project, rel, sinceMs, out, visited) {
   let entries;
   try {
     entries = fs.readdirSync(dir, { withFileTypes: true });
@@ -37,8 +72,9 @@ function walk(root, dir, sinceMs, out) {
   }
   for (const e of entries) {
     const p = path.join(dir, e.name);
-    if (e.isDirectory()) {
-      walk(root, p, sinceMs, out);
+    const sub = resolveDir(p, e, visited);
+    if (sub) {
+      walk(sub, project, [...rel, e.name], sinceMs, out, visited);
       continue;
     }
     if (!e.name.endsWith('.jsonl')) continue;
@@ -48,20 +84,17 @@ function walk(root, dir, sinceMs, out) {
     } catch {
       continue;
     }
-    if (st.mtimeMs < sinceMs) continue;
-    out.push(describe(root, p));
+    if (!st.isFile() || st.mtimeMs < sinceMs) continue;
+    out.push(describe(project, [...rel, e.name], p));
   }
 }
 
-function describe(root, file) {
-  const parts = path.relative(root, file).split(path.sep);
-  const project = parts[0];
+function describe(project, parts, file) {
   const subIdx = parts.indexOf('subagents');
   if (subIdx > 0) {
     const sessionId = parts[subIdx - 1];
     const kind = parts[subIdx + 1] === 'workflows' ? 'workflow' : 'subagent';
-    const metaFile = file.replace(/\.jsonl$/, '.meta.json');
-    return { file, project, sessionId, kind, metaFile };
+    return { file, project, sessionId, kind, metaFile: file.replace(/\.jsonl$/, '.meta.json') };
   }
   return { file, project, sessionId: path.basename(file, '.jsonl'), kind: 'main', metaFile: null };
 }

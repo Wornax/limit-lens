@@ -129,7 +129,7 @@ export function findings(r) {
 
   // Automated turns and loops.
   const auto = r.turns.automated;
-  const automationCost = Math.max(auto.cost, r.loops.cost);
+  const automationCost = auto.cost; // includes loop firings, which are reclassified as automated
   if (share(automationCost) >= THRESHOLDS.automation) {
     const evidence = [];
     if (auto.cost) {

@@ -48,7 +48,8 @@ const NEWEST_IN_FAMILY = { fable: 'fable-5-1', mythos: 'mythos-5-1', opus: 'opus
 const FALLBACK = 'sonnet-5-5';
 
 // Map a model id such as "claude-opus-4-1-20250805", "claude-3-5-haiku-20241022"
-// or "us.anthropic.claude-opus-5-5-v1:0" to a key of PRICES.
+// or "us.anthropic.claude-opus-5-5-v1:0" to a key of PRICES. A version missing from the
+// table takes the closest earlier version of its family and is flagged as estimated.
 export function resolveModel(modelId) {
   const id = String(modelId || '')
     .toLowerCase()
@@ -56,20 +57,25 @@ export function resolveModel(modelId) {
     .replace(/-v\d+(:\d+)?$/, '')
     .replace(/-\d{8}$/, '');
   let m = id.match(/claude-(opus|sonnet|haiku|fable|mythos)-(\d+)(?:-(\d+))?/);
-  if (m) {
-    const [, family, major, minor] = m;
-    if (minor && PRICES[`${family}-${major}-${minor}`]) return { key: `${family}-${major}-${minor}`, known: true };
-    if (PRICES[`${family}-${major}`]) return { key: `${family}-${major}`, known: true };
-    return { key: NEWEST_IN_FAMILY[family], known: false };
-  }
+  if (m) return lookup(m[1], +m[2], m[3] === undefined ? 0 : +m[3]);
   m = id.match(/claude-(\d+)(?:-(\d+))?-(opus|sonnet|haiku)/);
-  if (m) {
-    const [, major, minor, family] = m;
-    if (minor && PRICES[`${family}-${major}-${minor}`]) return { key: `${family}-${major}-${minor}`, known: true };
-    if (PRICES[`${family}-${major}`]) return { key: `${family}-${major}`, known: true };
-    return { key: NEWEST_IN_FAMILY[family], known: false };
-  }
+  if (m) return lookup(m[3], +m[1], m[2] === undefined ? 0 : +m[2]);
   return { key: FALLBACK, known: false };
+}
+
+const versionOf = (key) => {
+  const [, major, minor = '0'] = key.split('-');
+  return +major * 100 + +minor;
+};
+
+function lookup(family, major, minor) {
+  const exact = minor ? `${family}-${major}-${minor}` : `${family}-${major}`;
+  if (PRICES[exact]) return { key: exact, known: true };
+  const wanted = major * 100 + minor;
+  const earlier = Object.keys(PRICES)
+    .filter((k) => k.startsWith(`${family}-`) && versionOf(k) <= wanted)
+    .sort((a, b) => versionOf(b) - versionOf(a))[0];
+  return { key: earlier || NEWEST_IN_FAMILY[family], known: false };
 }
 
 // Split one API response's usage into list-price cost components (USD).
@@ -77,9 +83,10 @@ export function requestCost(modelId, usage = {}) {
   const { key, known } = resolveModel(modelId);
   const input = usage.input_tokens || 0;
   const read = usage.cache_read_input_tokens || 0;
-  const created = usage.cache_creation_input_tokens || 0;
   const w1h = usage.cache_creation?.ephemeral_1h_input_tokens || 0;
-  const w5m = usage.cache_creation ? usage.cache_creation.ephemeral_5m_input_tokens || 0 : created;
+  // The TTL breakdown can be partial; whatever it does not attribute to 1h is priced as a 5-minute write.
+  const created = usage.cache_creation_input_tokens || w1h + (usage.cache_creation?.ephemeral_5m_input_tokens || 0);
+  const w5m = Math.max(0, created - w1h);
   const output = usage.output_tokens || 0;
   const thinking = usage.output_tokens_details?.thinking_tokens || 0;
 
