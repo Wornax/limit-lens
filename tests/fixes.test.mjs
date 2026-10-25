@@ -26,6 +26,7 @@ test('heavy Opus agents get the subagent model fix, unless it is already set', a
 test('effort is lowered only for models saved at xhigh', async () => {
   const r = await report();
   r.byEffort = { xhigh: { cost: 60, requests: 600 } };
+  r.byModel = { 'opus-5-5': { cost: 70, requests: 700 }, 'sonnet-5-5': { cost: 30, requests: 300 } };
   const saved = { modelSettings: { 'claude-opus-5-5': { effortLevel: 'xhigh' }, 'claude-sonnet-5-5': { effortLevel: 'medium' } } };
   const f = applicableFixes(r, saved).filter((x) => x.id.startsWith('effort-high'));
   assert.equal(f.length, 1);
@@ -33,6 +34,14 @@ test('effort is lowered only for models saved at xhigh', async () => {
   assert.equal(f[0].value, 'high');
   assert.equal(f[0].current, 'xhigh');
   assert.ok(!ids(applicableFixes(r, {})).some((id) => id.startsWith('effort-high')));
+});
+
+test('effort is not offered for a saved model with a negligible share of spend', async () => {
+  const r = await report();
+  r.byEffort = { xhigh: { cost: 60, requests: 600 } };
+  r.byModel = { 'opus-5-5': { cost: 95, requests: 950 }, 'fable-5-1': { cost: 1, requests: 10 } };
+  const saved = { modelSettings: { 'claude-opus-5-5': { effortLevel: 'xhigh' }, 'claude-fable-5-1': { effortLevel: 'xhigh' } } };
+  assert.deepEqual(ids(applicableFixes(r, saved)).filter((id) => id.startsWith('effort-high')), ['effort-high-claude-opus-5-5']);
 });
 
 test('auto-compaction is offered only when contexts get huge and it is not already lower', async () => {

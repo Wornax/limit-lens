@@ -3,6 +3,9 @@
 // (v0.2 decision 2); add a fix only with a docs link that confirms its key and value.
 import { getPath } from './settings.mjs';
 import { pct } from './format.mjs';
+import { resolveModel } from './pricing.mjs';
+
+const MIN_MODEL_SHARE = 0.05;
 
 const DOCS = 'https://code.claude.com/docs/en';
 const SG_README = 'the security-guidance plugin README (Configuration section)';
@@ -41,6 +44,9 @@ export function applicableFixes(r, settings) {
     const saved = getPath(settings, ['modelSettings']) || {};
     for (const [modelId, conf] of Object.entries(saved)) {
       if (conf?.effortLevel !== 'xhigh') continue;
+      const key = resolveModel(modelId).key;
+      const modelSpend = (r.byModel[key]?.cost || 0) + (r.byModel[`${key}~`]?.cost || 0);
+      if (share(modelSpend) < MIN_MODEL_SHARE) continue; // not worth a question
       offer({
         id: `effort-high-${modelId}`,
         finding: 'effort',
