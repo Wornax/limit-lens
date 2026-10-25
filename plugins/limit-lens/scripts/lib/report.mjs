@@ -33,6 +33,28 @@ const NOTES = {
   'malformed-line': 'Some transcript lines had unexpected fields and were skipped.',
 };
 
+const show = (v) => (v === undefined || v === null ? '(not set)' : `\`${JSON.stringify(v)}\``);
+
+// The fix plan the `fix` skill walks through with the user, one fix at a time.
+export function renderPlan({ fixes, habits, settingsFile, last }) {
+  const lines = ['# limit-lens: fixes you can apply', '', `Settings file: \`${settingsFile}\` (backed up before any change; new settings apply to new sessions).`, ''];
+  if (!fixes.length) lines.push('No settings fix applies right now: either nothing crossed its threshold, or your settings already have these values.', '');
+  fixes.forEach((f, i) => {
+    lines.push(
+      `${i + 1}. \`${f.id}\`: ${f.title}`,
+      `   - Change: \`${f.path.join('.')}\` ${show(f.current)} -> ${show(f.value)}`,
+      `   - Why: ${f.why}`,
+      `   - Source: ${f.docs}`,
+    );
+  });
+  if (habits.length) lines.push('', '## Habits (only the user can do these)', '', ...habits.map((h) => `- ${h}`));
+  if (last) {
+    const fixesList = last.changes.map((c) => `\`${c.fixId}\``).join(', ');
+    lines.push('', '## Last experiment', '', `- \`${last.id}\`, applied ${last.appliedAt.slice(0, 16).replace('T', ' ')} UTC: ${fixesList}${last.revertedAt ? ' (reverted)' : ''}. Compare it after a few days of normal use.`);
+  }
+  return lines.join('\n') + '\n';
+}
+
 function historyNote(r) {
   const since = r.window.oldestData ? r.window.oldestData.slice(0, 10) : 'later';
   return `Your transcripts on this computer start on ${since}. Claude Code deletes transcripts after \`cleanupPeriodDays\` (30 days by default), so a window longer than that cannot be filled; raise it in settings.json to keep more history.`;
