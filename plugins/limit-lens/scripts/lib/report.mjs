@@ -1,6 +1,7 @@
 // Render a report and its findings as compact Markdown. The output is injected into a
 // conversation, so every line has to earn its tokens.
 import { usd, pct, tokens, topEntries, modelName } from './format.mjs';
+import { barBlock } from './charts.mjs';
 
 const MAX_SHOWN = 6;
 const ENTRYPOINT_NAMES = Object.assign(Object.create(null), { cli: 'terminal', 'claude-desktop': 'desktop app', 'sdk-py': 'Python SDK', 'sdk-ts': 'TypeScript SDK' });
@@ -169,26 +170,139 @@ const ASKED = [
   ['cross-session-hold', /"crossSessionInbound": "hold"/],
 ];
 
-function suggestionLines(found, fixes, habits) {
+// The findings' suggestions no question covers, grouped by finding, then the habits whose finding is not
+// shown (a shown finding already carries the same advice).
+export function otherSuggestions(found, fixes, habits) {
   const asked = (text) => ASKED.some(([id, re]) => re.test(text) && fixes.some((f) => f.id.startsWith(id)));
   const shown = found.slice(0, MAX_SHOWN);
   const groups = shown.map((f) => [f.title, f.fixes.filter((x) => !asked(x))]).filter(([, xs]) => xs.length);
-  // A habit whose finding is shown is already among that finding's suggestions.
   const rest = habits.filter((h) => !shown.some((f) => f.id === h.finding)).map((h) => h.text);
   if (rest.length) groups.push(['Habits', rest]);
+  return groups;
+}
+
+function suggestionLines(found, fixes, habits) {
+  const groups = otherSuggestions(found, fixes, habits);
   if (!groups.length) return [];
   const lines = ['## Other suggestions', '', 'Things only the user can do: slash commands to type, habits, and changes to their own agents and skills.', ''];
   for (const [title, xs] of groups) lines.push(`**${title}**`, ...xs.map((x) => `- ${x}`), '');
   return lines;
 }
 
-// `limit-lens analyze`: the report, the questions (the routing rule first), the suggestions no question
-// covers, and the history of applied changes.
-export function renderAnalyze({ report, found, fixes, habits = [], settingsFile, last, undo, warning, searched = [] }) {
-  const head = renderMarkdown(report, found, { searched, withFixes: false });
+// What analyze found and what happens next, before the details.
+function summaryLines(r, found, fixes, dashboard) {
+  const total = r.totals.cost;
+  const lines = ['## Summary', ''];
+  if (found.length) lines.push(`- **What eats your limit:** ${found.slice(0, 3).map((f) => `${f.title} (${pct(f.cost, total)})`).join(', ')}. These overlap.`);
+  const projects = topProjects(r, 3);
+  if (projects.length) lines.push(`- **Biggest projects:** ${projects.map(([p, b]) => `${clean(p)} ${pct(b.cost, total)}`).join(', ')}`);
+  const qs = questions(fixes);
+  if (qs.length) {
+    const first = qs[0].options[0].id === 'model-routing-rule' ? ', model routing first' : '';
+    lines.push(`- **What happens next:** Claude asks ${qs.length} question${qs.length === 1 ? '' : 's'}, one per fix below${first}. Nothing changes until you choose; each change is backed up, and \`/limit-lens:analyze revert\` undoes it.`);
+  } else {
+    lines.push('- **What happens next:** no fix applies right now, so nothing is asked; the other suggestions below are yours to try.');
+  }
+  const best = fixes.filter((f) => f.savings?.weekly != null).sort((a, b) => b.savings.weekly - a.savings.weekly)[0];
+  if (best) lines.push(`- **Largest estimated saving:** about ${usd(best.savings.weekly)} per week, from "${best.title}" (each fix alone; the estimates do not add up).`);
+  if (dashboard) lines.push(`- **Dashboard:** \`${dashboard.file}\`, with charts of everything below${dashboard.opened ? ', opened in your browser' : ''}.`);
+  lines.push('');
+  return lines;
+}
+
+// `limit-lens analyze`: a summary, the report, the questions (the routing rule first), the suggestions no
+// question covers, and the history of applied changes.
+export function renderAnalyze({ report, found, fixes, habits = [], settingsFile, last, undo, warning, searched = [], dashboard = null }) {
+  const head = renderMarkdown(report, found, { searched, withFixes: false, summary: report.totals.requests ? summaryLines(report, found, fixes, dashboard) : [] });
   if (!report.totals.requests) return head;
   const lines = ['', '## Questions', '', ...questionLines(fixes, settingsFile), ...suggestionLines(found, fixes, habits), ...historyLines({ last, undo, warning })];
   return head + lines.join('\n') + '\n';
+}
+
+// Every local calendar day in the window, oldest first, as YYYY-MM-DD.
+export function windowDays(r) {
+  const out = [];
+  const to = new Date(r.window.to);
+  const from = new Date(r.window.from);
+  for (const d = new Date(from.getFullYear(), from.getMonth(), from.getDate()); d <= to; d.setDate(d.getDate() + 1)) out.push(d.toLocaleDateString('en-CA'));
+  return out;
+}
+
+// "Sat 10-24" for 2026-10-24.
+export const dayLabel = (key) => {
+  const [y, m, d] = key.split('-').map(Number);
+  return `${new Date(y, m - 1, d).toLocaleDateString('en-US', { weekday: 'short' })} ${key.slice(5)}`;
+};
+
+const EFFORT_ORDER = ['max', 'xhigh', 'high', 'medium', 'low'];
+
+export const topProjects = (r, n) => Object.entries(r.byProject || {}).filter(([, b]) => b.cost > 0).sort((a, b) => b[1].cost - a[1].cost).slice(0, n);
+
+// The numbers behind the bars, shared by the Markdown and the dashboard. `name` maps a project folder name.
+export function glanceData(r, { name = (p) => p, projects = 3 } = {}) {
+  const c = r.components;
+  const total = r.totals.cost;
+  const top = (map, n) => Object.entries(map || {}).filter(([, b]) => b.cost > 0).sort((a, b) => b[1].cost - a[1].cost).slice(0, n);
+  const effort = Object.entries(r.byEffort || {}).filter(([, b]) => b.cost > 0)
+    .sort(([a], [b]) => (EFFORT_ORDER.indexOf(a) + 1 || 99) - (EFFORT_ORDER.indexOf(b) + 1 || 99));
+  return [
+    { id: 'days', title: 'Spend by day', rows: windowDays(r).map((k) => ({ key: k, label: dayLabel(k), cost: r.byDay?.[k]?.cost || 0, requests: r.byDay?.[k]?.requests || 0 })) },
+    {
+      id: 'where',
+      title: 'Where it goes',
+      rows: [
+        { label: 'Re-reading context', cost: c.cacheRead },
+        { label: 'Writing to the cache', cost: c.cacheWrite5m + c.cacheWrite1h },
+        { label: `Output (thinking ${pct(c.thinking, total)})`, cost: c.output },
+        { label: 'Uncached input', cost: c.input },
+      ],
+    },
+    { id: 'models', title: 'By model', rows: top(r.byModel, 4).map(([k, b]) => ({ label: modelName(k), cost: b.cost })) },
+    {
+      id: 'source',
+      title: 'By source',
+      rows: [
+        { label: 'You (main conversation)', cost: r.turns.human.cost },
+        { label: 'Automated turns', cost: r.turns.automated.cost },
+        { label: 'Subagents', cost: r.agents.subagent.cost },
+        { label: 'Workflow agents', cost: r.agents.workflow.cost },
+      ].filter((x) => x.cost > 0),
+    },
+    { id: 'effort', title: 'By effort', rows: effort.map(([k, b]) => ({ label: clean(k), cost: b.cost })) },
+    { id: 'projects', title: 'Biggest projects', rows: topProjects(r, projects).map(([p, b]) => ({ label: clean(name(p)), cost: b.cost })) },
+  ];
+}
+
+// The glance as text bars. Days scale to the busiest day; everything else to the total.
+function glanceLines(sections, total) {
+  const lines = ['```text'];
+  const pad = Math.min(28, Math.max(...sections.flatMap((s) => s.rows.map((x) => String(x.label).length)))); // one bar column for every block
+  for (const s of sections) {
+    if (!s.rows.length || (s.id === 'days' && s.rows.length > 10)) continue;
+    const max = Math.max(...s.rows.map((x) => x.cost));
+    const rows = s.rows.map((x) => (s.id === 'days'
+      ? { label: x.label, fraction: max ? x.cost / max : 0, value: usd(x.cost) }
+      : { label: x.label, fraction: total ? x.cost / total : 0, value: `${pct(x.cost, total).padStart(4)}  ${usd(x.cost).padStart(7)}` }));
+    lines.push(s.title, ...barBlock(rows, { pad }), '');
+  }
+  if (lines[lines.length - 1] === '') lines.pop();
+  lines.push('```');
+  return lines;
+}
+
+// What the report cannot see.
+export function notCounted(r) {
+  const total = r.totals.cost;
+  const items = [
+    'Usage from other computers, claude.ai chat and Cowork (they share your plan limits).',
+    'Plugins and scripts that call the API without leaving a log limit-lens can read.',
+  ];
+  if (r.totals.estimatedCost > 0) items.push(`${pct(r.totals.estimatedCost, total)} of spend is on models missing from the price table, priced at the closest known model and marked with \`~\`.`);
+  for (const n of r.notes || []) {
+    if (n === 'history-shorter-than-window') items.push(historyNote(r));
+    else if (NOTES[n]) items.push(NOTES[n]);
+  }
+  return items;
 }
 
 function historyNote(r) {
@@ -196,7 +310,7 @@ function historyNote(r) {
   return `Your transcripts on this computer start on ${since}. Claude Code deletes transcripts after \`cleanupPeriodDays\` (30 days by default), so a window longer than that cannot be filled; raise it in settings.json to keep more history.`;
 }
 
-export function renderMarkdown(r, found, { anonymize = false, searched = [], withFixes = true } = {}) {
+export function renderMarkdown(r, found, { anonymize = false, searched = [], withFixes = true, summary = [] } = {}) {
   const name = anonymizer(anonymize, { shorten: true });
   const total = r.totals.cost;
   const lines = [`# limit-lens: last ${r.window.days} day${r.window.days === 1 ? '' : 's'}`, ''];
@@ -223,31 +337,13 @@ export function renderMarkdown(r, found, { anonymize = false, searched = [], wit
     `API-equivalent spend **${usd(total)}** over ${r.totals.requests.toLocaleString('en-US')} requests in ${r.totals.sessions.toLocaleString('en-US')} sessions (list prices as of ${r.pricesAsOf}).`,
     'On a subscription this is not a bill: it shows how your usage limit was spent. Lenses overlap, so shares do not add up to 100%.',
     '',
-    '## Where it goes',
+    ...summary,
+    '## At a glance',
     '',
-    '| What | Share | Spend |',
-    '| :- | -: | -: |',
-  );
-  const c = r.components;
-  const rows = [
-    ['Re-reading context (cache reads)', c.cacheRead],
-    ['Writing context to the cache', c.cacheWrite5m + c.cacheWrite1h],
-    [`Output (thinking ${pct(c.thinking, total)})`, c.output],
-    ['Uncached input', c.input],
-  ];
-  for (const [label, cost] of rows) lines.push(`| ${label} | ${pct(cost, total)} | ${usd(cost)} |`);
-  lines.push('');
-
-  const sub = r.agents.subagent;
-  const wf = r.agents.workflow;
-  lines.push(
-    `- **By model:** ${topEntries(r.byModel, total, 4, modelName)}`,
-    `- **By effort:** ${topEntries(r.byEffort, total, 5)}`,
-    `- **By source:** main conversation ${pct(r.mainConversation.cost, total)} (you ${pct(r.turns.human.cost, total)}, automated ${pct(r.turns.automated.cost, total)}), subagents ${pct(sub.cost, total)}, workflow agents ${pct(wf.cost, total)}`,
+    ...glanceLines(glanceData(r, { name }), total),
+    '',
     `- **Started from:** ${topEntries(r.byEntrypoint, total, 4, entrypointName)}`,
   );
-  const projects = Object.entries(r.byProject || {}).filter(([, b]) => b.cost > 0).sort((a, b) => b[1].cost - a[1].cost).slice(0, 3);
-  if (projects.length) lines.push(`- **Biggest projects:** ${projects.map(([p, b]) => `${clean(name(p))} ${pct(b.cost, total)}`).join(', ')}`);
   if (r.outside.cost) lines.push(`- **Plugin calls outside transcripts:** ${usd(r.outside.cost)} (not in the total above)`);
   lines.push('');
 
@@ -282,13 +378,6 @@ export function renderMarkdown(r, found, { anonymize = false, searched = [], wit
     lines.push('', 'Spend per session counts its main conversation only, not its subagents.', '');
   }
 
-  lines.push('## Not counted', '');
-  lines.push('- Usage from other computers, claude.ai chat and Cowork (they share your plan limits).');
-  lines.push('- Plugins and scripts that call the API without leaving a log limit-lens can read.');
-  if (r.totals.estimatedCost > 0) lines.push(`- ${pct(r.totals.estimatedCost, total)} of spend is on models missing from the price table, priced at the closest known model and marked with \`~\`.`);
-  for (const n of r.notes || []) {
-    if (n === 'history-shorter-than-window') lines.push(`- ${historyNote(r)}`);
-    else if (NOTES[n]) lines.push(`- ${NOTES[n]}`);
-  }
+  lines.push('## Not counted', '', ...notCounted(r).map((x) => `- ${x}`));
   return lines.join('\n') + '\n';
 }

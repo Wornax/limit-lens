@@ -18,7 +18,7 @@ The script reads this machine's Claude Code transcripts locally and prints a sho
 
 Present the report:
 
-1. Answer in the user's language. Open with the spend line and say in one sentence that these are API list-price equivalents, not a bill on a subscription. Then show the "Where it goes" lines and the two or three findings that cover the most spend, with their numbers, in plain words.
+1. Answer in the user's language. Open with the spend line and say in one sentence that these are API list-price equivalents, not a bill on a subscription. Then show the "## At a glance" block exactly as printed, inside a code block so its bars stay aligned, and the two or three findings that cover the most spend, with their numbers, in plain words.
 2. For each finding, give its fixes. Keep setting names, values and commands verbatim (they were checked against the Claude Code docs) and translate only the explanation around them.
 3. If the report has an "Also above its threshold" line, name those findings in one sentence. End with the "Not counted" items, one short line each.
 4. Slash commands in the fixes (`/clear`, `/compact`, `/model`, `/effort`, `/fast`, ...) are the user's to type: say so. This skill only reads; for settings and model routing, offer `/limit-lens:analyze`, which asks about each fix, applies only the chosen ones with a backup, and can compare before and after.

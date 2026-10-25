@@ -98,6 +98,7 @@ function newReport(from, to, days) {
     byModel: map(),
     byEffort: map(),
     byEntrypoint: map(),
+    byDay: map(), // local calendar day (YYYY-MM-DD) -> { cost, requests }
     mainConversation: bucket(),
     turns: { human: bucket(), automated: { ...bucket(), byKind: map() } },
     loops: { cost: 0, requests: 0, runs: 0, sessions: 0 },
@@ -263,7 +264,8 @@ function readResponse(o, t, f, meta, state) {
   f.requests += 1;
   f.rereadCost += c.cacheRead;
   sessions.add(sessionKey);
-  state.dates.add(new Date(ts).toLocaleDateString('en-CA')); // local calendar day
+  const day = new Date(ts).toLocaleDateString('en-CA'); // local calendar day
+  state.dates.add(day);
   report.totals.cost += c.total;
   report.totals.requests += 1;
   if (c.estimated) report.totals.estimatedCost += c.total;
@@ -271,6 +273,7 @@ function readResponse(o, t, f, meta, state) {
   add(report.byModel, modelKey(c), c.total);
   add(report.byEffort, effort, c.total);
   add(report.byEntrypoint, entrypoint, c.total);
+  add(report.byDay, day, c.total);
   (entrypointSessions[entrypoint] ??= new Set()).add(sessionKey);
   if (usage.speed === 'fast') add(report, 'fastMode', c.total);
   const opus = c.priceKey.startsWith('opus');

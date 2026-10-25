@@ -7,6 +7,9 @@
 - `analyze`, `plan`, `apply`, `compare` and `revert` refuse `--days`, `--project` and `--anonymize`, which only the report takes.
 - Every question opens with what the thing is, in plain words ("What it is"): model routing, agents, effort, auto-compaction, cross-session messages, the security-guidance plugin, fast mode, the default model. The routing question is now "Turn on model routing for agents".
 - The analyze skill shows the report as its own message, in a fixed shape, before the first question.
+- Charts: the report draws spend by day, where it goes, by model, source and effort, and the biggest projects as text bars ("At a glance"); analyze opens with a "Summary" (what eats the limit, what happens next, the largest estimated saving) and, before applying, Claude sums up the chosen changes.
+- Dashboard: `analyze --open` writes `<config dir>/limit-lens/dashboard.html`, one self-contained page (no network, light and dark) with the spend, share cards, spend by day, bar charts, findings, every fix with what it is and its estimated saving, other suggestions and the costliest sessions, and opens it in the default browser (`LIMIT_LENS_NO_OPEN=1` turns the opening off).
+- The report counts spend per local day (`byDay` in `--json`).
 - `/limit-lens:report` runs only when you type it, for a read-only or shareable report, and lists the biggest projects.
 - `limit-lens analyze [--json]` on the command line; `plan` remains for scripts.
 - The plan opens with what is eating your limit: the biggest lenses, the biggest projects, and plugin calls outside transcripts.

@@ -1,20 +1,23 @@
 #!/usr/bin/env node
 // limit-lens: show where your Claude Code usage limit goes, apply chosen fixes to your settings,
 // and compare before and after. Reads local files only; no network.
+import fs from 'node:fs';
 import path from 'node:path';
+import { spawn } from 'node:child_process';
 import { analyze } from './lib/analyze.mjs';
 import { defaultConfigDirs, securityGuidanceLogFile } from './lib/discover.mjs';
 import { findings } from './lib/findings.mjs';
 import { habitsWithFindings } from './lib/fixes.mjs';
 import { metrics, renderCompare } from './lib/compare.mjs';
-import { currentPlan, applyFixes, revertExperiment, findExperiment, planHistory, settingsPath } from './lib/experiments.mjs';
+import { currentPlan, applyFixes, revertExperiment, findExperiment, planHistory, settingsPath, stateDir } from './lib/experiments.mjs';
+import { renderDashboard } from './lib/dashboard.mjs';
 import { userConfigDir } from './lib/settings.mjs';
 import { renderMarkdown, renderPlan, renderAnalyze, diagnosis, questions, contributorName, anonymizer, clean, UUID } from './lib/report.mjs';
 
 const USAGE = `Usage: limit-lens [command] [options]
 
   limit-lens [--days N] [--project NAME] [--anonymize] [--json]   report where your limit goes
-  limit-lens analyze [--json]                                      the report, then the fixes to ask about and other suggestions
+  limit-lens analyze [--open] [--json]                             the report, the fixes to ask about and other suggestions, and a dashboard page
   limit-lens plan [--json]                                         list the fixes you can apply
   limit-lens apply FIX_ID [FIX_ID ...]                             apply the chosen fixes (backs up settings first)
   limit-lens compare [--experiment ID]                             compare usage before and after the last change
@@ -25,6 +28,7 @@ Options:
   --project NAME     only projects whose folder name contains NAME
   --anonymize        replace project folder names with project-1, project-2, ...
   --json             print raw JSON
+  --open             analyze only: open the dashboard page in your browser
   --config-dir PATH  Claude config folder (default: CLAUDE_CONFIG_DIR, ~/.claude and ~/.config/claude)
 `;
 
@@ -63,6 +67,7 @@ function parseArgs(rawArgv) {
     else if (a === '--project') opts.project = value();
     else if (a === '--anonymize') opts.anonymize = true;
     else if (a === '--json') opts.json = true;
+    else if (a === '--open') opts.open = true;
     else if (a === '--config-dir') opts.configDir = value();
     else if (a === '--experiment') opts.experiment = value();
     else if (a === '--now') {
@@ -78,6 +83,7 @@ function parseArgs(rawArgv) {
   }
   if (!Number.isInteger(opts.days) || opts.days < 1 || opts.days > 90) fail('--days must be a whole number from 1 to 90');
   // The other commands always look at the last 7 days of every project, the window compare measures against.
+  if (opts.open && opts.command !== 'analyze') fail('--open applies only to analyze.');
   if (opts.command !== 'report' && (opts.daysGiven || opts.project !== null || opts.anonymize)) {
     fail('--days, --project and --anonymize apply only to the report (limit-lens [--days N] [--project NAME] [--anonymize]).');
   }
@@ -120,6 +126,21 @@ function sanitizeJson(report, anonymize) {
   }
 }
 
+// Open a local file with the system's default app (the browser, for HTML). The path is limit-lens's own;
+// LIMIT_LENS_NO_OPEN=1 turns this off, for tests and headless runs.
+function openInBrowser(file) {
+  if (process.env.LIMIT_LENS_NO_OPEN) return false;
+  const [cmd, args] = process.platform === 'win32' ? ['explorer.exe', [file]] : process.platform === 'darwin' ? ['open', [file]] : ['xdg-open', [file]];
+  try {
+    const child = spawn(cmd, args, { detached: true, stdio: 'ignore', windowsHide: true });
+    child.on('error', () => {});
+    child.unref();
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 const opts = parseArgs(process.argv.slice(2));
 const now = opts.now ?? Date.now();
 const configDirs = opts.configDir ? [opts.configDir] : defaultConfigDirs();
@@ -153,7 +174,14 @@ try {
         if (opts.command === 'analyze') sanitizeJson(report, false);
         out(JSON.stringify(opts.command === 'analyze' ? { report, findings: found, ...extra, ...plan } : { ...extra, ...plan }, null, 2) + '\n');
       } else {
-        out(opts.command === 'analyze' ? renderAnalyze({ report, found, searched: projectsDirs, ...plan, habits: habitList }) : renderPlan({ report, found, ...plan }));
+        let dashboard = null;
+        if (opts.command === 'analyze' && report.totals.requests) {
+          const file = path.join(stateDir(settingsDir), 'dashboard.html');
+          fs.mkdirSync(path.dirname(file), { recursive: true });
+          fs.writeFileSync(file, renderDashboard({ report, found, fixes, habits: habitList, ...plan, generatedAt: now }));
+          dashboard = { file, opened: Boolean(opts.open) && openInBrowser(file) };
+        }
+        out(opts.command === 'analyze' ? renderAnalyze({ report, found, searched: projectsDirs, ...plan, habits: habitList, dashboard }) : renderPlan({ report, found, ...plan }));
       }
     } else {
       const exp = applyFixes({ configDir: settingsDir, fixIds: opts.ids, report, now });

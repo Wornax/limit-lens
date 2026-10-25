@@ -29,8 +29,8 @@ test('analyze shows the report, then the questions with routing first, then the 
   assert.equal(res.status, 0, res.stderr);
   const out = res.stdout;
   const at = (s) => out.indexOf(s);
-  for (const s of ['## Where it goes', '## Findings', '## Questions', '### Question 1: Turn on model routing for agents', '## Other suggestions']) assert.ok(at(s) > -1, `missing ${s}`);
-  assert.ok(at('## Where it goes') < at('## Findings') && at('## Findings') < at('## Questions') && at('## Questions') < at('## Other suggestions'));
+  for (const s of ['## Summary', '## At a glance', '## Findings', '## Questions', '### Question 1: Turn on model routing for agents', '## Other suggestions']) assert.ok(at(s) > -1, `missing ${s}`);
+  assert.ok(at('## Summary') < at('## At a glance') && at('## At a glance') < at('## Findings') && at('## Findings') < at('## Questions') && at('## Questions') < at('## Other suggestions'));
   assert.match(out, /Biggest projects:\*\* my-app 100%/);
   assert.doesNotMatch(out, /^Fixes:/m); // the findings' suggestions move to the end
   assert.equal(fs.readFileSync(path.join(root, 'settings.json'), 'utf8'), '{"model":"opus"}\n');
@@ -72,8 +72,8 @@ test('analyze --json carries the report, the diagnosis and the questions, with n
 
 test('the report lists the biggest projects, hidden by --anonymize', () => {
   const root = heavyWeek();
-  assert.match(run(root).stdout, /Biggest projects:\*\* my-app 100%/);
+  assert.match(run(root).stdout, /Biggest projects\n.*my-app +\S+ +100%/);
   const anon = run(root, '--anonymize').stdout;
-  assert.match(anon, /Biggest projects:\*\* project-1 100%/);
+  assert.match(anon, /Biggest projects\n.*project-1 +\S+ +100%/);
   assert.doesNotMatch(anon, /my-app/);
 });

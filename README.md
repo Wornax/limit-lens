@@ -4,7 +4,7 @@
 
 limit-lens is a Claude Code plugin with one command, `/limit-lens:analyze`:
 
-1. **Report.** A small local script reads your session transcripts, works out what each request would cost at API list prices, and shows what eats your limit: models, effort, agents, re-read context, loops, plugins, and the biggest projects. Finding out costs few tokens: the script does the math, and Claude only reads the short result.
+1. **Report.** A small local script reads your session transcripts, works out what each request would cost at API list prices, and shows what eats your limit: models, effort, agents, re-read context, loops, plugins, and the biggest projects. You get bar charts in the conversation and a dashboard page in your browser. Finding out costs few tokens: the script does the math, and Claude only reads the short result.
 2. **Model routing.** Claude asks whether to turn on `model-routing`, a skill shipped with the plugin that has Claude pick Haiku, Sonnet or Opus (and an effort level) for each agent it starts.
 3. **Fixes.** Claude asks about each settings fix that would help you, one question at a time, and applies only the ones you choose, with a backup.
 4. **Other suggestions.** The habits and commands only you can adopt.
@@ -13,27 +13,32 @@ A few days later, `/limit-lens:analyze compare` shows your usage before and afte
 
 ## What you get
 
-An example report (numbers are illustrative):
+In the conversation, a summary and bar charts (numbers are illustrative):
 
 ```text
-# limit-lens: last 7 days
+Spend by day
+Mon 10-19                ████████████████████████  $248
+Tue 10-20                ██████████████            $147
+Wed 10-21                ████████████▏             $129
 
-API-equivalent spend $1,240 over 18,400 requests in 46 sessions (list prices as of 2026-10-25).
+Where it goes
+Re-reading context       ██████████████▋            61%     $756
+Writing to the cache     ██████▌                    27%     $335
+Output (thinking 5%)     ██▉                        12%     $149
 
-| What                              | Share | Spend |
-| Re-reading context (cache reads)  |   61% |  $756 |
-| Writing context to the cache      |   27% |  $335 |
-| Output (thinking 5%)              |   12% |  $149 |
+By model
+Opus 5.5                 █████████████████▊         74%     $918
+Sonnet 5.5               ██████▎                    26%     $322
 
-- By model: Opus 5.5 74%, Sonnet 5.5 26%
-- By effort: xhigh 51%, medium 30%, high 19%
-- By source: main conversation 31% (you 22%, automated 9%), subagents 44%, workflow agents 25%
-
-### 1. Subagents and workflow agents (69%, $856)
-- Your subagents made 7,900 requests over 61 agents (~130 requests each), averaging 310K tokens of context per request.
-Fixes:
-1. Run agents on a smaller model: "env": { "CLAUDE_CODE_SUBAGENT_MODEL": "sonnet" } ...
+By source
+You (main conversation)  █████▎                     22%     $273
+Subagents                ██████████▌                44%     $546
+Workflow agents          ██████                     25%     $310
 ```
+
+Then the findings, each with its evidence, and the fixes as questions.
+
+In your browser, a dashboard page with the same numbers: the spend, cards for the biggest shares, spend by day, bars by model, effort, source and project, the findings, every fix with what it is and its estimated saving, and the other suggestions. It is one local HTML file (`<config dir>/limit-lens/dashboard.html`) that loads nothing from the network, in light and dark.
 
 Each finding lists fixes that use real settings and commands, checked against the [Claude Code docs](https://code.claude.com/docs/en/costs), with links.
 
@@ -70,7 +75,7 @@ Requires Node.js 18 or later on your `PATH`. No other dependencies.
 
 | Command | What it does |
 | :- | :- |
-| `/limit-lens:analyze` | Report on the last 7 days, then ask about model routing and each fix, and apply the ones you choose |
+| `/limit-lens:analyze` | Report on the last 7 days with charts and a dashboard, then ask about model routing and each fix, and apply the ones you choose |
 | `/limit-lens:analyze compare` | Compare usage before and after the last change |
 | `/limit-lens:analyze revert` | Undo the last change |
 | `/limit-lens:report` | Report only, nothing asked or changed |
@@ -84,7 +89,7 @@ Claude runs `/limit-lens:analyze` on its own when you ask why you keep hitting y
 ```bash
 node plugins/limit-lens/scripts/limit-lens.mjs --days 7
 node plugins/limit-lens/scripts/limit-lens.mjs --json > usage.json
-node plugins/limit-lens/scripts/limit-lens.mjs analyze
+node plugins/limit-lens/scripts/limit-lens.mjs analyze --open
 node plugins/limit-lens/scripts/limit-lens.mjs apply model-routing-rule subagent-model-sonnet
 node plugins/limit-lens/scripts/limit-lens.mjs compare
 ```
@@ -115,7 +120,7 @@ Lenses overlap: a subagent's cache reads count under both "Re-reading context" a
 ## Privacy
 
 - No network calls. Everything stays on your machine.
-- It writes only what you approve, through the script: keys in your user `settings.json` and the routing block in your user `CLAUDE.md`, each backed up first.
+- It writes only what you approve, through the script: keys in your user `settings.json` and the routing block in your user `CLAUDE.md`, each backed up first. The one other file is its own dashboard page, `<config dir>/limit-lens/dashboard.html` (numbers and project names, never conversation text), which `analyze --open` opens in your default browser.
 - The report contains numbers, project folder names and short session ids (`--json` prints full session ids). It never contains prompt, response or tool output text. `--anonymize` replaces folder names with `project-1`, `project-2`, and so on, and hides custom agent names and searched paths.
 - Names read from disk are reduced to plain characters before they reach the report, so a hostile file or folder name cannot inject text into the conversation.
 
