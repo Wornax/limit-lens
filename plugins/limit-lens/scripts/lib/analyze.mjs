@@ -52,6 +52,7 @@ const agentLens = () => ({
   components: { cacheRead: 0, cacheWrite: 0, output: 0, input: 0 },
   promptTokens: 0,
   avgPromptTokens: 0,
+  agents: 0,
 });
 
 function newReport(from, to, days) {
@@ -206,6 +207,7 @@ export async function analyze({ projectsDirs, now = Date.now(), days = 7, projec
       }
     }
 
+    if (t.kind !== 'main' && f.requests > 0) report.agents[t.kind].agents += 1;
     if (t.kind === 'main' && f.requests > 0) {
       sessionRows.push({
         project: t.project,
