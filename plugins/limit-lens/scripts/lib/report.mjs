@@ -165,11 +165,16 @@ const ASKED = [
   ['model-routing-rule', /^Let Claude pick a model per task/],
   ['security-', /SECURITY_REVIEW_MODEL=/],
   ['fast-mode-off', /turn it off with `\/fast`/],
+  ['cross-session-hold', /"crossSessionInbound": "hold"/],
 ];
 
-function suggestionLines(found, fixes) {
+function suggestionLines(found, fixes, habits) {
   const asked = (text) => ASKED.some(([id, re]) => re.test(text) && fixes.some((f) => f.id.startsWith(id)));
-  const groups = found.slice(0, MAX_SHOWN).map((f) => [f.title, f.fixes.filter((x) => !asked(x))]).filter(([, xs]) => xs.length);
+  const shown = found.slice(0, MAX_SHOWN);
+  const groups = shown.map((f) => [f.title, f.fixes.filter((x) => !asked(x))]).filter(([, xs]) => xs.length);
+  // A habit whose finding is shown is already among that finding's suggestions.
+  const rest = habits.filter((h) => !shown.some((f) => f.id === h.finding)).map((h) => h.text);
+  if (rest.length) groups.push(['Habits', rest]);
   if (!groups.length) return [];
   const lines = ['## Other suggestions', '', 'Things only the user can do: slash commands to type, habits, and changes to their own agents and skills.', ''];
   for (const [title, xs] of groups) lines.push(`**${title}**`, ...xs.map((x) => `- ${x}`), '');
@@ -178,10 +183,10 @@ function suggestionLines(found, fixes) {
 
 // `limit-lens analyze`: the report, the questions (the routing rule first), the suggestions no question
 // covers, and the history of applied changes.
-export function renderAnalyze({ report, found, fixes, settingsFile, last, undo, warning, searched = [] }) {
+export function renderAnalyze({ report, found, fixes, habits = [], settingsFile, last, undo, warning, searched = [] }) {
   const head = renderMarkdown(report, found, { searched, withFixes: false });
   if (!report.totals.requests) return head;
-  const lines = ['', '## Questions', '', ...questionLines(fixes, settingsFile), ...suggestionLines(found, fixes), ...historyLines({ last, undo, warning })];
+  const lines = ['', '## Questions', '', ...questionLines(fixes, settingsFile), ...suggestionLines(found, fixes, habits), ...historyLines({ last, undo, warning })];
   return head + lines.join('\n') + '\n';
 }
 

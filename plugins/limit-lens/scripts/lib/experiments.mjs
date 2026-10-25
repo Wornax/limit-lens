@@ -152,19 +152,21 @@ export function revertExperiment({ configDir, now, id = null }) {
   if (!exp) throw new Error(id ? `No experiment "${id}".` : 'There is no applied experiment to revert.');
   if (exp.revertedAt) throw new Error(`Experiment "${exp.id}" was already reverted.`);
   const file = settingsPath(configDir);
-  const { data, format } = readSettings(file);
+  // An experiment that only added the routing rule never touched settings, so it does not need them.
+  const { data, format } = exp.changes.some((c) => c.kind !== 'memory') ? readSettings(file) : { data: {}, format: undefined };
   const restored = [];
   const skipped = [];
-  let memoryBackup = null;
+  const notes = [];
+  let memoryUndo = null; // written after settings, so a failed settings write leaves both files as they were
   for (const c of exp.changes) {
     if (c.kind === 'memory') {
-      const memory = readMemory(c.file);
-      const text = removeRouting(memory.text, c.eol, c.sep);
+      const text = removeRouting(readMemory(c.file).text, c.eol, c.sep);
       if (text === null) {
         skipped.push(c);
         continue;
       }
-      memoryBackup = writeFileSafely(c.file, text, { backupDir: backupDir(configDir), backupName: 'CLAUDE', backupExt: '.md' });
+      if (hasRouting(text)) notes.push(`\`${c.file}\` still mentions limit-lens:model-routing outside the block limit-lens added; that part was left as is.`);
+      memoryUndo = { c, text };
       restored.push(c);
       continue;
     }
@@ -178,7 +180,19 @@ export function revertExperiment({ configDir, now, id = null }) {
     restored.push(c);
   }
   const backup = restored.some((c) => c.kind !== 'memory') ? writeSettings(file, data, { backupDir: backupDir(configDir), format }) : null;
+  let memoryBackup = null;
+  if (memoryUndo) {
+    const { c, text } = memoryUndo;
+    try {
+      // A CLAUDE.md that apply created and nobody wrote in since goes away again.
+      if (c.hadFile === false && text === '') fs.unlinkSync(c.file);
+      else memoryBackup = writeFileSafely(c.file, text, { backupDir: backupDir(configDir), backupName: 'CLAUDE', backupExt: '.md' });
+    } catch (e) {
+      if (backup) writeFileSafely(file, fs.readFileSync(backup), { backupDir: backupDir(configDir), backupName: 'settings', backupExt: '.json' });
+      throw e;
+    }
+  }
   exp.revertedAt = new Date(now).toISOString();
   saveState(configDir, state);
-  return { experiment: exp, restored, skipped, backup, memoryBackup };
+  return { experiment: exp, restored, skipped, backup, memoryBackup, notes };
 }

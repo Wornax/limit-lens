@@ -1,6 +1,6 @@
 # limit-lens: living plan
 
-Status line: **v0.3 built and reviewed (5 confirmed + 4 hand-checked + 3 shell-override defects fixed), 131 tests green, headless run passes. Second review of the fixes running; pending: the author retrying the interactive flow, then the go-ahead to make the repo public** (2026-10-25).
+Status line: **v0.3 with the single command `/limit-lens:analyze` (report, model routing as a CLAUDE.md rule, settings fixes, other suggestions); three review rounds fixed, 164 tests green, headless run passes. Pending: the author trying it interactively, then the go-ahead to make the repo public** (2026-10-25).
 
 ## Goal
 
@@ -106,3 +106,18 @@ Three Sonnet finders (numbers, safety, spec) with an Opus skeptic per finding: 5
 - Auto-compaction at 300K needs requests past 300K (`requestsOver300k`, counted for main conversations), and its contributors are those sessions; the effort fix names projects by that model's high-effort spend (`highEffortByModel`); agent types are merged across the two agent lenses.
 - `report --json` adds up projects whose cleaned names collide.
 - Found while checking against real data: the shell outranks too. `CLAUDE_CODE_SUBAGENT_MODEL` stops the agents fix, `ANTHROPIC_MODEL` (priority 3, above the `model` setting) stops the default-model fix, and `CLAUDE_CODE_DISABLE_1M_CONTEXT` stops the 300K fix. Tests clear these variables in `tests/helpers.mjs`, because a Claude Code session exports its settings' env block.
+
+## One command: `/limit-lens:analyze` (2026-10-25)
+
+Why: the author asked for a single command that reports what is eating the limit, then offers the model-routing skill, then the other suggestions, instead of separate `report` and `fix` commands.
+
+Decisions:
+
+1. **`/limit-lens:analyze` is the door.** It is model-invoked (it fires when the user asks why they keep hitting the limit) and runs `limit-lens.mjs analyze`, which prints the report, the questions and the other suggestions from one pass over the transcripts. `compare` and `revert` are its arguments. The `fix` skill is gone; `report` stays for a read-only or shareable report and is user-invoked only, so the two skills never compete for the same trigger.
+2. **"Install the router" means a rule in the user's CLAUDE.md.** The `model-routing` skill already ships with the plugin; the fix `model-routing-rule` appends a marked three-line block to `<config dir>/CLAUDE.md` so Claude reads the guide before it starts any agent (the same pattern the author uses for his own routing skill). It is asked first, only when agents spend at least 1% and CLAUDE.md does not route already; its saving cannot be estimated in advance.
+3. **The script writes CLAUDE.md like settings:** validated first, backed up, atomic, symlink-safe; if the settings write fails after it, CLAUDE.md is put back. Revert removes exactly what was added (block, its line ending and separator) and leaves an edited block alone. Experiments record memory changes with `kind: 'memory'`; v0.2 records have no kind and are settings changes.
+4. **Other suggestions are the findings' own suggestions,** grouped by finding, minus the ones a question already asks (a fixed map from fix id to suggestion text, `ASKED` in `report.mjs`). Each habit names the finding that carries the same advice; analyze lists a habit under "Habits" only when that finding is not shown.
+
+## Review of the analyze command (2026-10-25)
+
+Two Sonnet finders (the CLAUDE.md writes, the flow and its docs) with an Opus skeptic per finding: 8 confirmed, plus 1 checked by hand; all fixed with tests in `tests/review-analyze.test.mjs`. CLAUDE.md that is not UTF-8 is refused instead of rewritten; revert keeps the user's lines apart, deletes a CLAUDE.md that apply created, writes CLAUDE.md only after settings succeed (and puts settings back if CLAUDE.md then fails), needs valid settings only when the experiment changed them, and notes a routing mention left outside the block. The goal check-in tip and the `/compact` advice no longer vanish with the suggestion a question covers; habits whose finding is not shown appear under "Habits"; `analyze`, `plan`, `apply`, `compare` and `revert` refuse `--days`, `--project` and `--anonymize` instead of ignoring them.

@@ -5,7 +5,7 @@ import path from 'node:path';
 import { analyze } from './lib/analyze.mjs';
 import { defaultConfigDirs, securityGuidanceLogFile } from './lib/discover.mjs';
 import { findings } from './lib/findings.mjs';
-import { habits } from './lib/fixes.mjs';
+import { habitsWithFindings } from './lib/fixes.mjs';
 import { metrics, renderCompare } from './lib/compare.mjs';
 import { currentPlan, applyFixes, revertExperiment, findExperiment, planHistory, settingsPath } from './lib/experiments.mjs';
 import { userConfigDir } from './lib/settings.mjs';
@@ -56,7 +56,10 @@ function parseArgs(rawArgv) {
       if (v === undefined || v.trim() === '' || v.startsWith('--')) fail(`Missing value for ${a}`);
       return v;
     };
-    if (a === '--days') opts.days = Number(value());
+    if (a === '--days') {
+      opts.days = Number(value());
+      opts.daysGiven = true;
+    }
     else if (a === '--project') opts.project = value();
     else if (a === '--anonymize') opts.anonymize = true;
     else if (a === '--json') opts.json = true;
@@ -74,6 +77,10 @@ function parseArgs(rawArgv) {
     else fail(`Unknown option: ${a}`);
   }
   if (!Number.isInteger(opts.days) || opts.days < 1 || opts.days > 90) fail('--days must be a whole number from 1 to 90');
+  // The other commands always look at the last 7 days of every project, the window compare measures against.
+  if (opts.command !== 'report' && (opts.daysGiven || opts.project !== null || opts.anonymize)) {
+    fail('--days, --project and --anonymize apply only to the report (limit-lens [--days N] [--project NAME] [--anonymize]).');
+  }
   if (opts.command === 'apply' && !opts.ids.length) fail('Name at least one fix id to apply (see `limit-lens plan`).');
   return opts;
 }
@@ -137,7 +144,8 @@ try {
     if (opts.command !== 'apply') {
       const fixes = currentPlan(settingsDir, report);
       const found = findings(report);
-      const plan = { settingsFile: settingsPath(settingsDir), fixes, habits: habits(report), ...planHistory(settingsDir) };
+      const habitList = habitsWithFindings(report);
+      const plan = { settingsFile: settingsPath(settingsDir), fixes, habits: habitList.map((h) => h.text), ...planHistory(settingsDir) };
       if (opts.json) {
         // Names from disk are cleaned, as in the Markdown; plan leaves the full report out.
         for (const f of fixes) for (const c of f.contributors) c.name = contributorName(c);
@@ -145,7 +153,7 @@ try {
         if (opts.command === 'analyze') sanitizeJson(report, false);
         out(JSON.stringify(opts.command === 'analyze' ? { report, findings: found, ...extra, ...plan } : { ...extra, ...plan }, null, 2) + '\n');
       } else {
-        out(opts.command === 'analyze' ? renderAnalyze({ report, found, searched: projectsDirs, ...plan }) : renderPlan({ report, found, ...plan }));
+        out(opts.command === 'analyze' ? renderAnalyze({ report, found, searched: projectsDirs, ...plan, habits: habitList }) : renderPlan({ report, found, ...plan }));
       }
     } else {
       const exp = applyFixes({ configDir: settingsDir, fixIds: opts.ids, report, now });
@@ -170,7 +178,7 @@ try {
       out(renderCompare(exp, after));
     }
   } else if (opts.command === 'revert') {
-    const { experiment, restored, skipped, backup, memoryBackup } = revertExperiment({ configDir: settingsDir, now, id: opts.experiment });
+    const { experiment, restored, skipped, backup, memoryBackup, notes } = revertExperiment({ configDir: settingsDir, now, id: opts.experiment });
     const lines = [`Reverted experiment \`${experiment.id}\`:`, ''];
     for (const c of restored) {
       lines.push(c.kind === 'memory' ? `- \`${c.file}\`: removed the model-routing rule` : `- \`${c.path.join('.')}\` restored to ${c.hadKey ? `\`${JSON.stringify(c.before)}\`` : '(not set)'} in \`${experiment.settingsFile}\``);
@@ -181,6 +189,7 @@ try {
     if (backup || memoryBackup) lines.push('');
     if (backup) lines.push(`Backup of the settings file before reverting: \`${backup}\`.`);
     if (memoryBackup) lines.push(`Backup of CLAUDE.md before reverting: \`${memoryBackup}\`.`);
+    if (notes.length) lines.push('', ...notes.map((n) => `Note: ${n}`));
     out(lines.join('\n') + '\n');
   }
 } catch (e) {

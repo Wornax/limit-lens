@@ -287,17 +287,20 @@ export function routingFix(r, { file, rule }) {
   };
 }
 
-// Habits only the user can adopt (slash commands are typed by the user).
-export function habits(r) {
+// Habits only the user can adopt (slash commands are typed by the user). Each names the finding whose
+// suggestions already give the same advice, so a report that shows that finding need not repeat it.
+export function habitsWithFindings(r) {
   const total = r.totals.cost;
   if (!total) return [];
   const out = [];
   const share = (x) => x / total;
-  if (share(r.components.cacheRead) >= 0.25) out.push('Run `/clear` between unrelated tasks, and `/compact` at natural breaks.');
+  if (share(r.components.cacheRead) >= 0.25) out.push({ finding: 'reread', text: 'Run `/clear` between unrelated tasks, and `/compact` at natural breaks.' });
   const rb = r.cache.rebuilds;
-  if (share(rb.afterIdle.cost) >= 0.02) out.push('Run `/compact` before stepping away from a large session; after a long break, start fresh with `/clear`.');
-  if (share(rb.modelSwitch.cost) >= 0.01) out.push('Pick the model with `/model` at the start of a session, not in the middle.');
-  if (share((r.byEffort.max?.cost || 0)) >= 0.1) out.push('`max` effort cannot be saved, so it comes from `/effort max`, `--effort max` or an environment variable: keep it for hard problems.');
-  if (share(r.turns.automated.cost) >= 0.05) out.push('Run loops in a short, dedicated session, and check `/usage` (press `w`) for the heaviest ones.');
+  if (share(rb.afterIdle.cost) >= 0.02) out.push({ finding: 'rebuilds', text: 'Run `/compact` before stepping away from a large session; after a long break, start fresh with `/clear`.' });
+  if (share(rb.modelSwitch.cost) >= 0.01) out.push({ finding: 'rebuilds', text: 'Pick the model with `/model` at the start of a session, not in the middle.' });
+  if (share((r.byEffort.max?.cost || 0)) >= 0.1) out.push({ finding: 'effort', text: '`max` effort cannot be saved, so it comes from `/effort max`, `--effort max` or an environment variable: keep it for hard problems.' });
+  if (share(r.turns.automated.cost) >= 0.05) out.push({ finding: 'automation', text: 'Run loops in a short, dedicated session, and check `/usage` (press `w`) for the heaviest ones.' });
   return out;
 }
+
+export const habits = (r) => habitsWithFindings(r).map((h) => h.text);
