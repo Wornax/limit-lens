@@ -77,9 +77,22 @@ function parseArgs(rawArgv) {
   return opts;
 }
 
-function anonymizeJson(report) {
-  const name = anonymizer(true);
-  for (const s of report.topSessions) s.project = name(s.project);
+// Every name in the JSON comes from disk. Real session ids (UUIDs) are kept; other file names become a
+// cleaned stub; project names are cleaned. --anonymize replaces project, file and custom agent names.
+function sanitizeJson(report, anonymize) {
+  const projectName = anonymize ? anonymizer(true) : (p) => clean(p).slice(0, 80);
+  const sessionName = (id, i) => (UUID.test(id) ? id : anonymize ? `session-${i + 1}` : clean(id).slice(0, 8));
+  for (const rows of [report.topSessions, report.contextSessions]) {
+    rows.forEach((s, i) => {
+      s.sessionId = sessionName(s.sessionId, i);
+      s.project = projectName(s.project);
+    });
+  }
+  const byProject = Object.create(null);
+  for (const [p, b] of Object.entries(report.byProject)) byProject[projectName(p)] = b;
+  report.byProject = byProject;
+  if (report.filter) report.filter.project = anonymize ? 'hidden' : clean(report.filter.project);
+  if (!anonymize) return;
   const agentName = new Map();
   for (const lens of Object.values(report.agents)) {
     const renamed = Object.create(null);
@@ -104,14 +117,7 @@ try {
     const report = await analyze({ projectsDirs, now, days: opts.days, project: opts.project, securityLog });
     const found = findings(report);
     if (opts.json) {
-      if (opts.anonymize) anonymizeJson(report);
-      // Names come from disk: keep real session ids (UUIDs); anything else becomes a cleaned stub,
-      // or a placeholder under --anonymize.
-      report.topSessions.forEach((s, i) => {
-        s.sessionId = UUID.test(s.sessionId) ? s.sessionId : opts.anonymize ? `session-${i + 1}` : clean(s.sessionId).slice(0, 8);
-        s.project = clean(s.project).slice(0, 80);
-      });
-      if (report.filter) report.filter.project = opts.anonymize ? 'hidden' : clean(report.filter.project);
+      sanitizeJson(report, opts.anonymize);
       out(JSON.stringify({ report, findings: found }, null, 2) + '\n');
     } else {
       out(renderMarkdown(report, found, { anonymize: opts.anonymize, searched: projectsDirs }));

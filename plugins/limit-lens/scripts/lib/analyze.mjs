@@ -108,6 +108,9 @@ function newReport(from, to, days) {
     context: { avgPromptTokens: 0, requestsOver200k: 0, costOver200k: 0 },
     cache: { rebuilds: { afterIdle: { cost: 0, count: 0 }, modelSwitch: { cost: 0, count: 0 }, other: { cost: 0, count: 0 } } },
     topSessions: [],
+    // Who is behind each lens, so fixes can name their biggest contributors.
+    byProject: map(),
+    contextSessions: [],
     outside: { cost: 0 },
     plugins: {},
     filter: null,
@@ -167,6 +170,11 @@ export async function analyze({ projectsDirs, now = Date.now(), days = 7, from: 
       report.notes.push('history-shorter-than-window');
     }
   }
+  report.contextSessions = sessionRows
+    .filter((s) => s.requestsOver200k > 0)
+    .sort((a, b) => b.requestsOver200k - a.requestsOver200k || b.avgPromptTokens - a.avgPromptTokens)
+    .slice(0, 3)
+    .map((s) => ({ ...s }));
   report.topSessions = sessionRows.sort((a, b) => b.cost - a.cost).slice(0, TOP_SESSIONS);
 
   if (securityLog && project) {
@@ -265,6 +273,17 @@ function readResponse(o, t, f, meta, state) {
   add(report.byEntrypoint, entrypoint, c.total);
   (entrypointSessions[entrypoint] ??= new Set()).add(sessionKey);
   if (usage.speed === 'fast') add(report, 'fastMode', c.total);
+  const opus = c.priceKey.startsWith('opus');
+  const proj = (report.byProject[t.project] ??= { cost: 0, mainCost: 0, agentCost: 0, opusMainCost: 0, opusAgentCost: 0, highEffortCost: 0, requestsOver200k: 0 });
+  proj.cost += c.total;
+  if (t.kind === 'main') {
+    proj.mainCost += c.total;
+    if (opus) proj.opusMainCost += c.total;
+  } else {
+    proj.agentCost += c.total;
+    if (opus) proj.opusAgentCost += c.total;
+  }
+  if (effort === 'xhigh' || effort === 'max') proj.highEffortCost += c.total;
 
   if (isFirst) {
     const setup = c.input + c.cacheWrite5m + c.cacheWrite1h;
@@ -293,6 +312,8 @@ function readResponse(o, t, f, meta, state) {
     if (promptTokens > 200_000) {
       report.context.requestsOver200k += 1;
       report.context.costOver200k += c.total;
+      proj.requestsOver200k += 1;
+      f.over200k = (f.over200k || 0) + 1;
     }
     const kind = turnKind(f.turn, f.entrypoint);
     const h = f.turn.hash ? f.hashes.get(f.turn.hash) : null;
@@ -320,7 +341,8 @@ function readResponse(o, t, f, meta, state) {
     lens.components.output += c.output;
     lens.components.input += c.input;
     lens.promptTokens += promptTokens;
-    add(lens.byType, label(meta?.agentType, 48), c.total);
+    const typeBucket = add(lens.byType, label(meta?.agentType, 48), c.total);
+    typeBucket.opusCost = (typeBucket.opusCost || 0) + (opus ? c.total : 0);
     add(lens.byModel, modelKey(c), c.total);
   }
 }
@@ -339,6 +361,7 @@ function finishTranscript(t, f, report, sessionRows) {
     requests: f.requests,
     avgPromptTokens: Math.round(f.promptTokens / f.requests),
     rereadCost: f.rereadCost,
+    requestsOver200k: f.over200k || 0,
   });
 
   // Loops: a machine-started prompt repeated in the window. Hand-typed repeats ("continue") are not loops.
