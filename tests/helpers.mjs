@@ -24,9 +24,12 @@ export function assistant({ id, ts, model = 'claude-sonnet-5-5', usage = {}, eff
     timestamp: ts,
     effort,
     entrypoint,
+    // Same key order as real transcripts: model, id, type, role, content, ..., usage.
     message: {
-      id: id ?? `msg-${seq}`,
       model,
+      id: id ?? `msg-${seq}`,
+      type: 'message',
+      role: 'assistant',
       content: [{ type: block }],
       usage: { input_tokens: 0, output_tokens: 0, cache_read_input_tokens: 0, cache_creation_input_tokens: 0, ...usage },
     },

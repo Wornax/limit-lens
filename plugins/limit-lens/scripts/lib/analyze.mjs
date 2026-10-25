@@ -1,8 +1,8 @@
 // Stream transcripts once and aggregate API-equivalent cost into the report's lenses.
 import crypto from 'node:crypto';
 import fs from 'node:fs';
-import readline from 'node:readline';
 import { requestCost, PRICES_AS_OF } from './pricing.mjs';
+import { keptLines } from './lines.mjs';
 import { findTranscripts } from './discover.mjs';
 import { labelForPrompt } from './signatures.mjs';
 import { readSecurityGuidanceLog } from './plugins/security-guidance.mjs';
@@ -97,11 +97,7 @@ export async function analyze({ projectsDirs, now = Date.now(), days = 7, projec
       prevTs: null, prevModel: null, ttlMs: HOUR, promptTokens: 0, rereadCost: 0,
     };
 
-    const rl = readline.createInterface({ input: fs.createReadStream(t.file), crlfDelay: Infinity });
-    for await (const line of rl) {
-      const isAssistant = line.includes('"type":"assistant"');
-      const maybePrompt = t.kind === 'main' && !isAssistant && line.includes('"type":"user"') && !line.includes('"tool_use_id"');
-      if (!isAssistant && !maybePrompt) continue;
+    for await (const { text: line } of keptLines(t.file, { wantPrompts: t.kind === 'main' })) {
       let o;
       try {
         o = JSON.parse(line);
