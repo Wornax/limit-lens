@@ -8,7 +8,8 @@
 // - savings: an estimated weekly saving (API-equivalent, list prices) and how it was estimated,
 //   or weekly: null when it cannot be estimated in advance;
 // - kind: 'cost-only' (your own sessions work the same) or 'changes-work', with its effect;
-// - group: fixes in the same group are alternatives, asked as one question and never applied together.
+// - group: fixes in the same group are alternatives, asked as one question and never applied together;
+// - what: what the thing is, in plain words, for someone who has never heard of it.
 import { getPath } from './settings.mjs';
 import { pct } from './format.mjs';
 import { resolveModel, sonnetSaving } from './pricing.mjs';
@@ -68,6 +69,7 @@ export function applicableFixes(r, settings) {
       id: 'subagent-model-sonnet',
       finding: 'agents',
       title: 'Run agents on Sonnet by default',
+      what: 'Subagents and workflow agents are helpers Claude starts for side tasks, such as searching the code, reviewing a change or running steps in parallel. Each runs on its own model; this setting is the default for agents that do not choose one.',
       why: `Agents were ${pct(agentsCost, total)} of spend, ${pct(opusAgents, agentsCost)} of it on Opus outside the built-in Explore and Plan agents. Agents that do not choose a model themselves will run on Sonnet; agents with a model in their definition, and Explore and Plan, keep theirs.`,
       kind: 'changes-work',
       effect: 'Agents without their own model run on Sonnet: cheaper and faster, a little weaker on the hardest reasoning.',
@@ -93,6 +95,7 @@ export function applicableFixes(r, settings) {
         id: `effort-high-${modelId}`,
         finding: 'effort',
         title: `Save effort "high" for ${modelId}`,
+        what: 'Effort is how hard Claude thinks before answering and how many tool calls it makes: low, medium, high, xhigh or max. Higher effort costs more per task; the level saved for a model is its default in new sessions.',
         why: `${pct(highEffort, total)} of spend ran at xhigh or max effort, and ${modelId} is saved at xhigh. High still reasons deeply. For a hard problem, use /effort max (this session only) or pick xhigh with s in the /effort slider (this session only); a level typed after /effort is saved as your default.`,
         kind: 'changes-work',
         effect: `${modelId} thinks less deeply by default, with fewer tool calls; raise it for one session when a problem needs it.`,
@@ -117,6 +120,7 @@ export function applicableFixes(r, settings) {
       id: 'autocompact-300k',
       finding: 'reread',
       title: 'Compact conversations at 300K tokens',
+      what: 'Every message re-sends the whole conversation, so a long session costs more with each turn. Auto-compaction replaces the conversation with a summary when it reaches a size limit, and the session continues from the summary.',
       why: `Re-reading context is ${pct(r.components.cacheRead, total)} of spend and ${r.context.requestsOver300k.toLocaleString('en-US')} requests went past 300K tokens. Compacting earlier keeps long sessions smaller; each compaction costs one summary request.`,
       kind: 'changes-work',
       effect: 'Long sessions are summarized once they reach 300K tokens, so details from early in a session can be lost.',
@@ -135,6 +139,7 @@ export function applicableFixes(r, settings) {
       id: 'cross-session-hold',
       finding: 'automation',
       title: 'Hold messages from other sessions',
+      what: 'Your Claude Code sessions can send each other messages, for example when a session you started elsewhere reports back. Each message starts a turn in the session that receives it, which re-reads its whole conversation.',
       why: `Messages from other sessions started turns that cost ${pct(peer, total)} of spend, each re-reading the whole conversation. With hold, Claude Code shows a notice for each message and does not deliver it to Claude (up to 100 are kept, released only if you switch back to accept). Choose it only if you do not rely on your sessions messaging each other.`,
       kind: 'changes-work',
       effect: 'Your sessions stop receiving each other\'s messages.',
@@ -176,6 +181,7 @@ export function applicableFixes(r, settings) {
       finding: 'plugins',
       group: 'security-turn-review',
       title: 'security-guidance: per-turn diff review on Sonnet',
+      what: 'security-guidance is a plugin that reviews the code Claude changes for security problems: after every turn that changed files, and at each commit and push. Each review is a separate call to the model.',
       why: 'The security-guidance plugin reviews on the newest Opus by default. Sonnet finds slightly less but costs half as much.',
       kind: 'cost-only',
       effect: 'Your sessions work the same; the plugin\'s per-turn review may catch slightly fewer issues.',
@@ -191,6 +197,7 @@ export function applicableFixes(r, settings) {
       id: 'security-agentic-sonnet',
       finding: 'plugins',
       title: 'security-guidance: commit and push reviews on Sonnet',
+      what: 'security-guidance is a plugin that reviews the code Claude changes for security problems: after every turn that changed files, and at each commit and push. Each review is a separate call to the model.',
       why: 'Its commit and push reviews run full agent sessions on Opus by default.',
       kind: 'cost-only',
       effect: 'Your sessions work the same; commit and push reviews may catch slightly fewer issues.',
@@ -209,6 +216,7 @@ export function applicableFixes(r, settings) {
       finding: 'plugins',
       group: 'security-turn-review',
       title: 'security-guidance: drop the review after every turn',
+      what: 'security-guidance is a plugin that reviews the code Claude changes for security problems: after every turn that changed files, and at each commit and push. Each review is a separate call to the model.',
       why: 'Keeps the commit and push reviews, which see everything that lands; drops the review that runs every time Claude finishes a turn with changes.',
       kind: 'cost-only',
       effect: 'Your sessions work the same; issues are caught at commit or push instead of after each turn.',
@@ -228,6 +236,7 @@ export function applicableFixes(r, settings) {
       id: 'fast-mode-off',
       finding: 'fast',
       title: 'Turn fast mode off by default',
+      what: 'Fast mode makes Opus answer faster for twice the price. With `"fastMode": true` in your settings, new sessions start with it on.',
       why: `Fast mode ran ${r.fastMode.requests.toLocaleString('en-US')} requests at twice the Opus price, paid from usage credits on a subscription. Turn it on with /fast when you need the speed.`,
       kind: 'changes-work',
       effect: 'Responses are slower unless you turn fast mode on with /fast.',
@@ -248,6 +257,7 @@ export function applicableFixes(r, settings) {
       id: 'default-model-sonnet',
       finding: 'models',
       title: 'Start new sessions on Sonnet',
+      what: 'The default model is the one every new session starts on; `/model` switches it for the session you are in. Sonnet costs half as much as Opus and handles most everyday coding.',
       why: `Opus models were ${pct(sumOpus(r.byModel), total)} of spend. New sessions would start on Sonnet, which costs less than Opus (on the Anthropic API, Sonnet 5.5 lists at half the price of Opus 5.5); switch with /model opus at the start of a session that needs it.`,
       kind: 'changes-work',
       effect: 'New sessions start on Sonnet; you choose Opus with /model when a task needs it.',
@@ -274,8 +284,9 @@ export function routingFix(r, { file, rule }) {
     id: 'model-routing-rule',
     finding: 'agents',
     target: 'memory',
-    title: 'Route delegated work with the model-routing skill',
-    why: `Agents were ${pct(agentsCost, total)} of spend, ${pct(opusAgents, agentsCost)} of it on Opus. With this rule, Claude reads this plugin's model-routing guide before it starts a subagent or workflow agent, and picks Haiku, Sonnet or Opus and the effort for each task; without it, Claude reads the guide only when it decides to.`,
+    title: 'Turn on model routing for agents',
+    what: 'Model routing means choosing, for each task Claude hands to a subagent or workflow agent, the smallest model that gets it right the first time: Haiku for fixed recipes with a check (run a known command, rename), Sonnet for most coding, reviews and fixes, Opus for design, decisions and anything risky (money, user data, security, deploys), plus the effort for each. This plugin ships those rules as a guide, the `model-routing` skill; the line added to CLAUDE.md makes Claude follow it every time it starts an agent and say which model it picked.',
+    why: `Agents were ${pct(agentsCost, total)} of spend, ${pct(opusAgents, agentsCost)} of it on Opus. Without the line, Claude reads the guide only when it decides to, and each agent runs on its default model, usually your session's.`,
     kind: 'changes-work',
     effect: 'Claude chooses a model and effort for each agent it starts and says which one; routine agent work moves off Opus, hard or risky work stays on it.',
     contributors: top('agent type', Object.entries(types)),

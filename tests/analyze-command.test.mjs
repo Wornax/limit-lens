@@ -29,7 +29,7 @@ test('analyze shows the report, then the questions with routing first, then the 
   assert.equal(res.status, 0, res.stderr);
   const out = res.stdout;
   const at = (s) => out.indexOf(s);
-  for (const s of ['## Where it goes', '## Findings', '## Questions', '### Question 1: Route delegated work with the model-routing skill', '## Other suggestions']) assert.ok(at(s) > -1, `missing ${s}`);
+  for (const s of ['## Where it goes', '## Findings', '## Questions', '### Question 1: Turn on model routing for agents', '## Other suggestions']) assert.ok(at(s) > -1, `missing ${s}`);
   assert.ok(at('## Where it goes') < at('## Findings') && at('## Findings') < at('## Questions') && at('## Questions') < at('## Other suggestions'));
   assert.match(out, /Biggest projects:\*\* my-app 100%/);
   assert.doesNotMatch(out, /^Fixes:/m); // the findings' suggestions move to the end

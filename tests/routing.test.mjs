@@ -107,7 +107,7 @@ test('the plan shows the rule and where it goes, and what revert would remove', 
   const { root, report } = await withAgents();
   const fixes = currentPlan(root, report);
   let md = renderPlan({ report, fixes, habits: [], settingsFile: 'settings.json', ...planHistory(root) });
-  assert.match(md, /### Question 1: Route delegated work with the model-routing skill/);
+  assert.match(md, /### Question 1: Turn on model routing for agents/);
   assert.match(md, /Change: add to `[^`]*CLAUDE\.md`/);
   assert.match(md, RULE);
   applyFixes({ configDir: root, fixIds: ['model-routing-rule'], report, now: NOW });

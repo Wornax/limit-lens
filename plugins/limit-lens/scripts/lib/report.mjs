@@ -65,7 +65,7 @@ export function questions(fixes) {
       byGroup.get(f.group).options.push(f);
       continue;
     }
-    const q = { group: f.group || null, title: f.group ? GROUP_TITLES[f.group] || f.title : f.title, options: [f] };
+    const q = { group: f.group || null, title: f.group ? GROUP_TITLES[f.group] || f.title : f.title, what: f.what, options: [f] };
     if (f.group) byGroup.set(f.group, q);
     out.push(q);
   }
@@ -116,6 +116,7 @@ function questionLines(fixes, settingsFile) {
   if (!fixes.length) lines.push('No fix applies right now: either nothing crossed its threshold, or your settings already have these values.', '');
   questions(fixes).forEach((q, i) => {
     lines.push(`### Question ${i + 1}: ${q.title}`, '');
+    if (q.what) lines.push(`- What it is: ${q.what}`);
     if (q.options.length === 1) {
       lines.push(...fixLines(q.options[0], 0), `Options: \`${q.options[0].id}\``, '');
     } else {

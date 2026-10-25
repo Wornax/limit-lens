@@ -5,6 +5,8 @@
 - One command, `/limit-lens:analyze`: the report, then model routing, then each settings fix, then the other suggestions, from one pass over the transcripts. It replaces `/limit-lens:fix`; `compare` and `revert` move to `/limit-lens:analyze compare` and `/limit-lens:analyze revert`.
 - Model routing as a fix: a marked three-line block in the user's `CLAUDE.md` that makes Claude read the `model-routing` guide before it starts an agent. Offered first when agents spend and `CLAUDE.md` does not route already; applied by the script with a backup; revert removes exactly that block (and a `CLAUDE.md` that apply created), leaves an edited one alone, and writes `CLAUDE.md` only after settings succeed. A `CLAUDE.md` that is not UTF-8 is never rewritten.
 - `analyze`, `plan`, `apply`, `compare` and `revert` refuse `--days`, `--project` and `--anonymize`, which only the report takes.
+- Every question opens with what the thing is, in plain words ("What it is"): model routing, agents, effort, auto-compaction, cross-session messages, the security-guidance plugin, fast mode, the default model. The routing question is now "Turn on model routing for agents".
+- The analyze skill shows the report as its own message, in a fixed shape, before the first question.
 - `/limit-lens:report` runs only when you type it, for a read-only or shareable report, and lists the biggest projects.
 - `limit-lens analyze [--json]` on the command line; `plan` remains for scripts.
 - The plan opens with what is eating your limit: the biggest lenses, the biggest projects, and plugin calls outside transcripts.

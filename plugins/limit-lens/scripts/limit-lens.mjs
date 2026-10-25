@@ -149,7 +149,7 @@ try {
       if (opts.json) {
         // Names from disk are cleaned, as in the Markdown; plan leaves the full report out.
         for (const f of fixes) for (const c of f.contributors) c.name = contributorName(c);
-        const extra = { diagnosis: diagnosis(report, found), questions: questions(fixes).map((q) => ({ title: q.title, group: q.group, options: q.options.map((f) => f.id) })) };
+        const extra = { diagnosis: diagnosis(report, found), questions: questions(fixes).map((q) => ({ title: q.title, what: q.what, group: q.group, options: q.options.map((f) => f.id) })) };
         if (opts.command === 'analyze') sanitizeJson(report, false);
         out(JSON.stringify(opts.command === 'analyze' ? { report, findings: found, ...extra, ...plan } : { ...extra, ...plan }, null, 2) + '\n');
       } else {

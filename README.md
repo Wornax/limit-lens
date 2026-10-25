@@ -43,6 +43,7 @@ Each finding lists fixes that use real settings and commands, checked against th
 
 1. It opens with what is eating your limit: where the spend goes, the biggest projects, and the findings with their numbers.
 2. Then it asks about the fixes that apply to you. The first is usually model routing: a three-line block in your `CLAUDE.md` (`<config dir>/CLAUDE.md`, the instructions Claude Code loads in every session) that makes Claude read the `model-routing` guide before it starts a subagent or workflow agent. The rest are settings. Each fix shows:
+   - what it is, in plain words, for someone who has never heard of it;
    - whether it is "cost only" or "changes how Claude works for you", and how;
    - the change (the setting with its current and new value, or the line added to `CLAUDE.md`), and why;
    - the projects, agent types, sessions or plugin reviews behind it, when the transcripts can tell;
@@ -50,7 +51,7 @@ Each finding lists fixes that use real settings and commands, checked against th
 
    A fix is offered only when your usage shows the problem and the change would take effect: not when your user settings or environment already have that value, outrank it, or switch the feature off. Project and managed settings files also outrank the user file, and the plan does not read them.
 3. Claude asks one question per fix, with "Skip" first and "Show details" next. Alternatives, such as running the security-guidance per-turn review on Sonnet or dropping it, share one question, and the script refuses both together.
-4. The script, not Claude, writes the chosen changes into your user `settings.json` and `CLAUDE.md`, after backing them up. The apply command also goes through Claude Code's own permission prompt, so you approve twice.
+4. The script, not Claude, writes the chosen changes into your user `settings.json` and `CLAUDE.md`, after backing them up. The apply command also goes through Claude Code's own permission prompt, so you approve twice. In auto mode the classifier may approve that command without asking; the question in the conversation is then your only check.
 5. It ends with the other suggestions: habits such as `/clear` and `/compact`, and changes to your own agents and skills. Slash commands are yours to type.
 6. After a few days of normal use, `/limit-lens:analyze compare` shows spend per active day and per request, and the share of each lens, before and after. `/limit-lens:analyze revert` puts back only what it changed: the settings keys, and the routing block in `CLAUDE.md`. It leaves alone anything you changed since.
 
