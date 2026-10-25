@@ -1,6 +1,6 @@
 # limit-lens: living plan
 
-Status line: **v0.1 done: reviewed in three rounds, 79 tests green, end-to-end runs pass (default and `--days 2 --anonymize`: no permission denials, no real names reach the model, about $0.01 each on Haiku). Pending: the author's go-ahead to make the repo public** (2026-10-25).
+Status line: **v0.2 built: fix, compare and revert, 98 tests green, headless end-to-end runs pass (the interactive question flow needs a person). Pending: review of v0.2, then the author's go-ahead to make the repo public** (2026-10-25).
 
 ## Goal
 

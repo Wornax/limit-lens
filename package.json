@@ -1,6 +1,6 @@
 {
   "name": "limit-lens",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "private": true,
   "description": "Claude Code plugin that shows where your usage limit goes and how to spend less.",
   "type": "module",

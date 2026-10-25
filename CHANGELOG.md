@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.2.0 (2026-10-25)
+
+- `/limit-lens:fix`: lists the fixes that apply to you as settings, asks about each one, and applies only the chosen ones through the script, with a backup and a recorded experiment.
+- `/limit-lens:fix compare`: spend per active day and per request, and lens shares, before and after the change; says when it is too early.
+- `/limit-lens:fix revert`: restores only the keys an experiment changed, skipping keys changed since.
+- CLI subcommands `plan`, `apply`, `compare`, `revert`; the report skill can only run flag-only commands, and `apply`/`revert` are never pre-approved.
+
 ## 0.1.0 (2026-10-25)
 
 - `/limit-lens:report`: local report of API-equivalent spend by component, model, effort, source and entry point, with ranked findings and fixes checked against the Claude Code docs. Runs through the Bash tool with a permission rule pinned to the script.

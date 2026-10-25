@@ -4,6 +4,8 @@
 
 limit-lens is a Claude Code plugin. Run `/limit-lens:report` and a small local script reads your session transcripts, works out what each request would cost at API list prices, and tells you which habits and settings eat your limit, with the exact fix for each. Finding out costs no tokens: the script does the math, and Claude only reads the short report.
 
+Then run `/limit-lens:fix`: Claude asks you about each fix that can be applied as a setting, applies only the ones you choose (with a backup), and a few days later `/limit-lens:fix compare` shows your usage before and after.
+
 It also ships `model-routing`, a skill that teaches Claude to pick Haiku, Sonnet or Opus (and an effort level) for each piece of delegated work.
 
 ## What you get
@@ -30,7 +32,18 @@ Fixes:
 1. Run agents on a smaller model: "env": { "CLAUDE_CODE_SUBAGENT_MODEL": "sonnet" } ...
 ```
 
-Each finding lists fixes that use real settings and commands, checked against the [Claude Code docs](https://code.claude.com/docs/en/costs), with links. Claude offers to apply them one at a time and shows every settings change before making it.
+Each finding lists fixes that use real settings and commands, checked against the [Claude Code docs](https://code.claude.com/docs/en/costs), with links.
+
+## Fix, then measure
+
+`/limit-lens:fix` turns the report into changes you approve one by one:
+
+1. It lists the fixes that apply to you as settings, each with the setting, its current value, the new value and why. A fix is offered only when your usage shows the problem and your settings are not already that way.
+2. Claude asks about each one; you pick "Apply" or "Skip".
+3. The script, not Claude, writes the chosen keys into your user `settings.json`, after backing it up. The apply command also goes through Claude Code's own permission prompt, so you approve twice.
+4. After a few days of normal use, `/limit-lens:fix compare` shows spend per active day and per request, and the share of each lens, before and after. `/limit-lens:fix revert` puts back only the keys it changed, and leaves alone any key you changed since.
+
+Settings it can apply: `env.CLAUDE_CODE_SUBAGENT_MODEL`, per-model `effortLevel` under `modelSettings`, `autoCompactWindow`, `crossSessionInbound`, `fastMode`, `model`, and the security-guidance plugin's model variables. Habits such as `/clear` and `/compact` are listed for you to adopt; slash commands are yours to type. Records and backups live in `<config dir>/limit-lens/`.
 
 ## Install
 
@@ -49,6 +62,9 @@ Requires Node.js 18 or later on your `PATH`. No other dependencies.
 | `/limit-lens:report --days 30` | Longer window (1 to 90 days; Claude Code deletes transcripts after `cleanupPeriodDays`, 30 days by default) |
 | `/limit-lens:report --project api` | Only projects whose folder name contains `api` |
 | `/limit-lens:report --anonymize` | Replace project folder names, so you can share the report |
+| `/limit-lens:fix` | Walk through the settings fixes and apply the ones you choose |
+| `/limit-lens:fix compare` | Compare usage before and after the last change |
+| `/limit-lens:fix revert` | Undo the last change |
 | `/limit-lens:model-routing` | Load the model-routing guide (Claude also loads it on its own before delegating) |
 
 Run the report in a fresh session: it adds about 1,500 tokens of context. You can also run the script directly, outside Claude Code:
@@ -56,6 +72,9 @@ Run the report in a fresh session: it adds about 1,500 tokens of context. You ca
 ```bash
 node plugins/limit-lens/scripts/limit-lens.mjs --days 7
 node plugins/limit-lens/scripts/limit-lens.mjs --json > usage.json
+node plugins/limit-lens/scripts/limit-lens.mjs plan
+node plugins/limit-lens/scripts/limit-lens.mjs apply subagent-model-sonnet
+node plugins/limit-lens/scripts/limit-lens.mjs compare
 ```
 
 ## What it measures
