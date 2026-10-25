@@ -166,3 +166,81 @@ test('auto-compaction at 300K is not offered when CLAUDE_CODE_DISABLE_1M_CONTEXT
   assert.ok(ids(applicableFixes(r, {})).includes('autocompact-300k'));
   assert.ok(!ids(applicableFixes(r, { env: { CLAUDE_CODE_DISABLE_1M_CONTEXT: '1' } })).includes('autocompact-300k'));
 });
+
+// Second review: fixes that would change nothing must not be offered.
+
+test('a family alias such as "opus" in the security-guidance variables is priced as the newest Opus', async () => {
+  const r = withStopReviews(await heavyAgents());
+  r.toolSessions = { 'security-guidance review': { cost: 8, requests: 80, sessions: 4 } };
+  for (const model of ['opus', 'opus[1m]']) {
+    const fixes = applicableFixes(r, { env: { SECURITY_REVIEW_MODEL: model, SG_AGENTIC_MODEL: model } });
+    close(fixes.find((x) => x.id === 'security-review-sonnet').savings.weekly, 2);
+    close(fixes.find((x) => x.id === 'security-agentic-sonnet').savings.weekly, 4);
+  }
+});
+
+test('the agents fix leaves out the built-in Explore and Plan agents, which the variable does not move', async () => {
+  const r = await heavyAgents();
+  r.agents.subagent.byType = { Explore: { cost: 25, requests: 250, opusCost: 25 }, Plan: { cost: 15, requests: 150, opusCost: 15 } };
+  assert.ok(!ids(applicableFixes(r, {})).includes('subagent-model-sonnet'));
+  r.agents.subagent.byType = { Explore: { cost: 20, requests: 200, opusCost: 20 }, 'general-purpose': { cost: 20, requests: 200, opusCost: 20 } };
+  const f = applicableFixes(r, {}).find((x) => x.id === 'subagent-model-sonnet');
+  close(f.savings.weekly, 10); // half of the $20 that can move
+  assert.deepEqual(f.contributors.filter((c) => c.kind === 'agent type').map((c) => c.name), ['general-purpose']);
+});
+
+test('the hold fix is not offered when cross-session messages are already refused', async () => {
+  const r = await heavyAgents();
+  r.turns.automated.byKind.peer = { cost: 10, requests: 10 };
+  assert.ok(ids(applicableFixes(r, {})).includes('cross-session-hold'));
+  assert.ok(!ids(applicableFixes(r, { crossSessionInbound: 'refuse' })).includes('cross-session-hold'));
+});
+
+test('the security-guidance model fixes are skipped on every third-party provider', async () => {
+  const r = withStopReviews(await heavyAgents());
+  r.toolSessions = { 'security-guidance review': { cost: 6, requests: 60, sessions: 3 } };
+  for (const flag of ['CLAUDE_CODE_USE_MANTLE', 'CLAUDE_CODE_USE_ANTHROPIC_AWS']) {
+    const got = ids(applicableFixes(r, { env: { [flag]: '1' } }));
+    assert.ok(!got.includes('security-review-sonnet') && !got.includes('security-agentic-sonnet'), flag);
+  }
+});
+
+test('the fast-mode fix is not offered when fast mode cannot carry over to new sessions', async () => {
+  const r = await heavyAgents();
+  r.fastMode = { cost: 20, requests: 10 };
+  assert.ok(ids(applicableFixes(r, { fastMode: true })).includes('fast-mode-off'));
+  assert.ok(!ids(applicableFixes(r, { fastMode: true, fastModePerSessionOptIn: true })).includes('fast-mode-off'));
+  assert.ok(!ids(applicableFixes(r, { fastMode: true, env: { CLAUDE_CODE_DISABLE_FAST_MODE: '1' } })).includes('fast-mode-off'));
+});
+
+test('auto-compaction at 300K is not offered when automatic compaction is off', async () => {
+  const r = await heavyAgents();
+  r.components.cacheRead = 60;
+  r.context.requestsOver300k = 10;
+  for (const settings of [{ autoCompactEnabled: false }, { env: { DISABLE_AUTO_COMPACT: '1' } }, { env: { DISABLE_COMPACT: '1' } }]) {
+    assert.ok(!ids(applicableFixes(r, settings)).includes('autocompact-300k'), JSON.stringify(settings));
+  }
+});
+
+test('the security-guidance fixes follow the plugin\'s own off switches', async () => {
+  const r = withStopReviews(await heavyAgents());
+  r.toolSessions = { 'security-guidance review': { cost: 6, requests: 60, sessions: 3 } };
+  const sg = (settings) => ids(applicableFixes(r, settings)).filter((id) => id.startsWith('security-'));
+  assert.equal(sg({}).length, 3);
+  for (const env of [{ SECURITY_GUIDANCE_DISABLE: 'true' }, { ENABLE_SECURITY_REMINDER: '0' }, { ENABLE_CODE_SECURITY_REVIEW: '0' }]) {
+    assert.deepEqual(sg({ env }), [], JSON.stringify(env));
+  }
+  assert.deepEqual(sg({ enabledPlugins: { 'security-guidance@claude-plugins-official': false } }), []);
+  for (const env of [{ SG_AGENTIC_COMMIT_REVIEW: 'off' }, { ENABLE_COMMIT_REVIEW: '0' }]) {
+    assert.deepEqual(sg({ env }), ['security-review-sonnet', 'security-stop-review-off'], JSON.stringify(env));
+  }
+});
+
+test('the effort fix is not offered when maxEffortLevel already caps the model below xhigh', async () => {
+  const r = await heavyAgents();
+  r.byEffort = { xhigh: { cost: 60, requests: 600 } };
+  r.byModel = { 'opus-5-5': { cost: 90, requests: 900 } };
+  const saved = { modelSettings: { 'claude-opus-5-5': { effortLevel: 'xhigh' } } };
+  assert.ok(ids(applicableFixes(r, saved)).includes('effort-high-claude-opus-5-5'));
+  assert.ok(!ids(applicableFixes(r, { ...saved, maxEffortLevel: 'high' })).includes('effort-high-claude-opus-5-5'));
+});

@@ -61,6 +61,9 @@ export function resolveModel(modelId) {
   if (m) return lookup(m[1], +m[2], m[3] === undefined ? 0 : +m[3]);
   m = id.match(/claude-(\d+)(?:-(\d+))?-(opus|sonnet|haiku)/);
   if (m) return lookup(m[3], +m[1], m[2] === undefined ? 0 : +m[2]);
+  // A bare alias such as "opus" (settings and plugin variables accept them) means the newest of its family.
+  m = id.match(/^(opus|sonnet|haiku|fable|mythos)$/);
+  if (m) return { key: NEWEST_IN_FAMILY[m[1]], known: true };
   return { key: FALLBACK, known: false };
 }
 

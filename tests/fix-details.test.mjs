@@ -19,7 +19,7 @@ async function heavyAgents(days = 7) {
   r.totals.requests = 1000;
   Object.assign(r.agents.subagent, { cost: 60, requests: 600, agents: 6 });
   r.agents.subagent.byModel['opus-5-5'] = { cost: 40, requests: 400 };
-  r.agents.subagent.byType = { 'code-reviewer': { cost: 30, requests: 300, opusCost: 30 }, Explore: { cost: 30, requests: 300, opusCost: 10 } };
+  r.agents.subagent.byType = { 'code-reviewer': { cost: 30, requests: 300, opusCost: 30 }, 'general-purpose': { cost: 30, requests: 300, opusCost: 10 } };
   r.byProject = {
     'proj-a': { cost: 50, mainCost: 10, agentCost: 40, opusMainCost: 10, opusAgentCost: 30, highEffortCost: 0, requestsOver200k: 0 },
     'proj-b': { cost: 50, mainCost: 40, agentCost: 10, opusMainCost: 0, opusAgentCost: 10, highEffortCost: 0, requestsOver200k: 0 },

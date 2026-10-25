@@ -1,6 +1,6 @@
 # limit-lens: living plan
 
-Status line: **v0.3 built: diagnosis first, per-fix contributors, weekly savings, cost-only or changes-work label, alternatives as one question, Skip first; 116 tests green, headless run passes. In review; pending: the author retrying the interactive flow, then the go-ahead to make the repo public** (2026-10-25).
+Status line: **v0.3 built and reviewed (5 confirmed + 4 hand-checked + 3 shell-override defects fixed), 131 tests green, headless run passes. Second review of the fixes running; pending: the author retrying the interactive flow, then the go-ahead to make the repo public** (2026-10-25).
 
 ## Goal
 
@@ -95,3 +95,14 @@ Decisions:
 4. **Alternatives share one question.** Fixes with the same `group` are rendered as one question with "Options: `a` or `b`", and `apply` refuses two of them before writing anything.
 5. **Skip first.** The skill orders the options Skip, Show details, then Apply (or one option per alternative), and does not soften a "changes how Claude works" label.
 6. **Attribution in the report.** `byProject` splits spend into main and agents, Opus, high effort and requests over 200K; `contextSessions` lists the sessions with the most requests over 200K. `plan --json` adds the diagnosis and the questions, with names from disk cleaned.
+
+## v0.3 review (2026-10-25)
+
+Three Sonnet finders (numbers, safety, spec) with an Opus skeptic per finding: 5 confirmed, 6 refuted; the 6 findings past the per-axis cap were checked by hand (4 real, 2 duplicates). Fixed with tests in `tests/review-v03.test.mjs`:
+
+- Model savings use the Sonnet 5.5 discount of each Opus version (`sonnetSaving` in `pricing.mjs`, the token kind where Sonnet saves least), not a flat half, and the plan says "about", not "up to".
+- The security-guidance Sonnet fixes are offered only while the review runs on Opus (its variable unset or an Opus id), priced at that model; the per-turn fixes disappear once `ENABLE_STOP_REVIEW` is exactly "0" (the plugin ignores "false" and "off"); the commit and push fix falls back to the log cost.
+- The diagnosis shows plugin calls outside transcripts; the plan says the estimates do not add up.
+- Auto-compaction at 300K needs requests past 300K (`requestsOver300k`, counted for main conversations), and its contributors are those sessions; the effort fix names projects by that model's high-effort spend (`highEffortByModel`); agent types are merged across the two agent lenses.
+- `report --json` adds up projects whose cleaned names collide.
+- Found while checking against real data: the shell outranks too. `CLAUDE_CODE_SUBAGENT_MODEL` stops the agents fix, `ANTHROPIC_MODEL` (priority 3, above the `model` setting) stops the default-model fix, and `CLAUDE_CODE_DISABLE_1M_CONTEXT` stops the 300K fix. Tests clear these variables in `tests/helpers.mjs`, because a Claude Code session exports its settings' env block.

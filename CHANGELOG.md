@@ -10,6 +10,7 @@
 - The security-guidance Sonnet fixes are offered only while that review runs on Opus, and the per-turn ones not at all once `ENABLE_STOP_REVIEW` is "0".
 - Auto-compaction at 300K is offered only when requests went past 300K, and not when `CLAUDE_CODE_DISABLE_1M_CONTEXT` already caps the window at 200K.
 - A variable in the shell counts like one in the settings file: `CLAUDE_CODE_SUBAGENT_MODEL` stops the agents fix, and `ANTHROPIC_MODEL`, which outranks the `model` setting, stops the default-model fix.
+- A fix is not offered when it would change nothing: Explore and Plan agents (the subagent variable does not move them), cross-session messages already refused, fast mode that cannot carry over (`fastModePerSessionOptIn`, `CLAUDE_CODE_DISABLE_FAST_MODE`), automatic compaction turned off, an effort cap at or below high (`maxEffortLevel`), the security-guidance plugin switched off or on any third-party provider. A model alias such as `opus` is priced as the newest of its family.
 - `--json` reports attribute spend by project (main conversation and agents, Opus, high effort per model, requests over 200K and 300K) and list the sessions with the most requests over 300K; projects whose cleaned names collide are added up.
 - `plan --json` adds the diagnosis and the questions, with names from disk cleaned.
 - Tests clear the settings variables a Claude Code session exports, so they see only their own fixtures.

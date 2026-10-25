@@ -27,6 +27,8 @@ function envSet(settings, name, flag = false) {
 const DOCS = 'https://code.claude.com/docs/en';
 const SG_README = 'the security-guidance plugin README (Configuration section)';
 const isOpus = (k) => k.startsWith('opus');
+// Built-in agents that CLAUDE_CODE_SUBAGENT_MODEL alone does not move (sub-agents#choose-a-model).
+const UNMOVED_AGENTS = new Set(['Explore', 'Plan']);
 const sumOpus = (m) => Object.entries(m || {}).filter(([k]) => isOpus(k)).reduce((s, [, b]) => s + b.cost, 0);
 // What the Opus spend in a { model key: { cost } } map would cost less on Sonnet 5.5, at list prices.
 const opusSaving = (m) => Object.entries(m || {}).filter(([k]) => isOpus(k)).reduce((s, [k, b]) => s + b.cost * sonnetSaving(k), 0);
@@ -53,21 +55,23 @@ export function applicableFixes(r, settings) {
     out.push({ ...fix, current });
   };
 
-  // Agents on a smaller model.
+  // Agents on a smaller model. The variable alone does not move the built-in Explore and Plan agents,
+  // which keep the main conversation's model, so their Opus spend is left out.
   const agentsCost = r.agents.subagent.cost + r.agents.workflow.cost;
-  const opusAgents = sumOpus(r.agents.subagent.byModel) + sumOpus(r.agents.workflow.byModel);
+  const types = Object.create(null); // the same type can run as a subagent and in a workflow
+  for (const l of [r.agents.subagent, r.agents.workflow]) for (const [t, b] of Object.entries(l.byType || {})) types[t] = (types[t] || 0) + (b.opusCost || 0);
+  const opusAll = sumOpus(r.agents.subagent.byModel) + sumOpus(r.agents.workflow.byModel);
+  const opusAgents = Math.max(0, opusAll - [...UNMOVED_AGENTS].reduce((s, t) => s + (types[t] || 0), 0));
   if (share(agentsCost) >= 0.2 && opusAgents / agentsCost >= 0.3 && !envSet(settings, 'CLAUDE_CODE_SUBAGENT_MODEL')) {
-    const types = Object.create(null); // the same type can run as a subagent and in a workflow
-    for (const l of [r.agents.subagent, r.agents.workflow]) for (const [t, b] of Object.entries(l.byType || {})) types[t] = (types[t] || 0) + (b.opusCost || 0);
     offer({
       id: 'subagent-model-sonnet',
       finding: 'agents',
       title: 'Run agents on Sonnet by default',
-      why: `Agents were ${pct(agentsCost, total)} of spend, ${pct(opusAgents, agentsCost)} of it on Opus. Agents that do not choose a model themselves will run on Sonnet; agents with a model in their definition keep it.`,
+      why: `Agents were ${pct(agentsCost, total)} of spend, ${pct(opusAgents, agentsCost)} of it on Opus outside the built-in Explore and Plan agents. Agents that do not choose a model themselves will run on Sonnet; agents with a model in their definition, and Explore and Plan, keep theirs.`,
       kind: 'changes-work',
       effect: 'Agents without their own model run on Sonnet: cheaper and faster, a little weaker on the hardest reasoning.',
-      contributors: [...projectsBy(r, 'opusAgentCost'), ...top('agent type', Object.entries(types))],
-      savings: { weekly: weekly(opusSaving(r.agents.subagent.byModel) + opusSaving(r.agents.workflow.byModel)), basis: 'what your agents\' Opus spend would cost less on Sonnet 5.5 at list prices (half for Opus 5.5, more for older Opus); agents with a model in their definition keep it, so the real saving can be lower.' },
+      contributors: [...projectsBy(r, 'opusAgentCost'), ...top('agent type', Object.entries(types).filter(([t]) => !UNMOVED_AGENTS.has(t)))],
+      savings: { weekly: weekly(((opusSaving(r.agents.subagent.byModel) + opusSaving(r.agents.workflow.byModel)) * opusAgents) / opusAll), basis: 'what your agents\' Opus spend outside Explore and Plan would cost less on Sonnet 5.5 at list prices (half for Opus 5.5, more for older Opus); agents with a model in their definition keep it, so the real saving can be lower.' },
       path: ['env', 'CLAUDE_CODE_SUBAGENT_MODEL'],
       value: 'sonnet',
       docs: `${DOCS}/sub-agents#choose-a-model`,
@@ -76,7 +80,8 @@ export function applicableFixes(r, settings) {
 
   // Effort: only levels you saved per model can be changed here; an environment override wins over them.
   const highEffort = (r.byEffort.xhigh?.cost || 0) + (r.byEffort.max?.cost || 0);
-  if (share(highEffort) >= 0.3 && !envSet(settings, 'CLAUDE_CODE_EFFORT_LEVEL')) {
+  const capped = ['low', 'medium', 'high'].includes(getPath(settings, ['maxEffortLevel'])); // the cap applies over a saved level
+  if (share(highEffort) >= 0.3 && !envSet(settings, 'CLAUDE_CODE_EFFORT_LEVEL') && !capped) {
     const saved = getPath(settings, ['modelSettings']) || {};
     for (const [modelId, conf] of Object.entries(saved)) {
       if (conf?.effortLevel !== 'xhigh') continue;
@@ -100,10 +105,12 @@ export function applicableFixes(r, settings) {
   }
 
   // Compact long conversations earlier. The env variable and a per-model window both override the
-  // top-level key, and CLAUDE_CODE_DISABLE_1M_CONTEXT already caps the window at 200K: skip in each case.
+  // top-level key, CLAUDE_CODE_DISABLE_1M_CONTEXT already caps the window at 200K, and automatic compaction
+  // can be off: skip in each case.
   const autoCompact = getPath(settings, ['autoCompactWindow']);
   const perModelWindow = Object.values(getPath(settings, ['modelSettings']) || {}).some((c) => c?.autoCompactWindow !== undefined);
-  const overridden = envSet(settings, 'CLAUDE_CODE_AUTO_COMPACT_WINDOW') || perModelWindow || envSet(settings, 'CLAUDE_CODE_DISABLE_1M_CONTEXT', true);
+  const overridden = envSet(settings, 'CLAUDE_CODE_AUTO_COMPACT_WINDOW') || perModelWindow || envSet(settings, 'CLAUDE_CODE_DISABLE_1M_CONTEXT', true)
+    || getPath(settings, ['autoCompactEnabled']) === false || envSet(settings, 'DISABLE_AUTO_COMPACT', true) || envSet(settings, 'DISABLE_COMPACT', true);
   if (share(r.components.cacheRead) >= 0.25 && r.context.requestsOver300k > 0 && !overridden && !(typeof autoCompact === 'number' && autoCompact <= 300_000)) {
     offer({
       id: 'autocompact-300k',
@@ -122,7 +129,7 @@ export function applicableFixes(r, settings) {
 
   // Messages from other sessions starting turns.
   const peer = r.turns.automated.byKind.peer?.cost || 0;
-  if (share(peer) >= 0.01) {
+  if (share(peer) >= 0.01 && !['hold', 'refuse'].includes(getPath(settings, ['crossSessionInbound']))) {
     offer({
       id: 'cross-session-hold',
       finding: 'automation',
@@ -146,13 +153,20 @@ export function applicableFixes(r, settings) {
   const sgSessions = r.toolSessions['security-guidance review'];
   const agenticReviews = Boolean(sgSessions) || (sgReviews.commit?.count || 0) + (sgReviews.push?.count || 0) > 0;
   const agenticCost = sgSessions?.cost || 0;
-  const thirdParty = ['CLAUDE_CODE_USE_BEDROCK', 'CLAUDE_CODE_USE_VERTEX', 'CLAUDE_CODE_USE_FOUNDRY'].some((k) => envSet(settings, k, true));
+  const thirdParty = ['CLAUDE_CODE_USE_BEDROCK', 'CLAUDE_CODE_USE_VERTEX', 'CLAUDE_CODE_USE_FOUNDRY', 'CLAUDE_CODE_USE_MANTLE', 'CLAUDE_CODE_USE_ANTHROPIC_AWS']
+    .some((k) => envSet(settings, k, true));
+  // The plugin's own switches, read the way its hooks read them (hooks/_base.py, llm.py).
+  const sgEnv = (name) => String(getPath(settings, ['env', name]) ?? process.env[name] ?? '').trim();
+  const sgOff = ['1', 'true', 'yes', 'on'].includes(sgEnv('SECURITY_GUIDANCE_DISABLE').toLowerCase()) || sgEnv('ENABLE_SECURITY_REMINDER') === '0'
+    || sgEnv('ENABLE_CODE_SECURITY_REVIEW') === '0'
+    || Object.entries(getPath(settings, ['enabledPlugins']) || {}).some(([k, v]) => k.startsWith('security-guidance@') && v === false);
+  const agenticOff = sgEnv('ENABLE_COMMIT_REVIEW') === '0' || ['0', 'off'].includes(sgEnv('SG_AGENTIC_COMMIT_REVIEW').toLowerCase());
   // The model a review runs on: its variable in the settings env or the shell, else the plugin's default, the newest Opus.
   const sgModel = (name) => (envSet(settings, name) ? String(getPath(settings, ['env', name]) ?? process.env[name]) : 'claude-opus-5-5');
   const onOpus = (name) => /opus/i.test(sgModel(name));
   const sgSaving = (name) => sonnetSaving(resolveModel(sgModel(name)).key);
   // The plugin turns its per-turn review off only for the exact value "0".
-  const stopOff = String(getPath(settings, ['env', 'ENABLE_STOP_REVIEW']) ?? process.env.ENABLE_STOP_REVIEW) === '0';
+  const stopOff = sgOff || String(getPath(settings, ['env', 'ENABLE_STOP_REVIEW']) ?? process.env.ENABLE_STOP_REVIEW) === '0';
   const logAgenticCost = (sgReviews.commit?.cost || 0) + (sgReviews.push?.cost || 0);
   const stopContributors = sgReviews.stop?.count ? [{ kind: 'review', name: 'per-turn reviews', cost: sgReviews.stop.cost, detail: `${sgReviews.stop.count} reviews` }] : [];
   if (stopReviews && !stopOff && !thirdParty && onOpus('SECURITY_REVIEW_MODEL')) {
@@ -171,7 +185,7 @@ export function applicableFixes(r, settings) {
       docs: SG_README,
     });
   }
-  if (agenticReviews && !thirdParty && onOpus('SG_AGENTIC_MODEL')) {
+  if (agenticReviews && !sgOff && !agenticOff && !thirdParty && onOpus('SG_AGENTIC_MODEL')) {
     offer({
       id: 'security-agentic-sonnet',
       finding: 'plugins',
@@ -206,7 +220,9 @@ export function applicableFixes(r, settings) {
   }
 
   // Fast mode left on.
-  if (r.fastMode.cost > 0 && getPath(settings, ['fastMode']) === true) {
+  // With fastModePerSessionOptIn or CLAUDE_CODE_DISABLE_FAST_MODE, new sessions start without fast mode anyway.
+  const fastCarries = getPath(settings, ['fastModePerSessionOptIn']) !== true && !envSet(settings, 'CLAUDE_CODE_DISABLE_FAST_MODE', true);
+  if (r.fastMode.cost > 0 && getPath(settings, ['fastMode']) === true && fastCarries) {
     offer({
       id: 'fast-mode-off',
       finding: 'fast',

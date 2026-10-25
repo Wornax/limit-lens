@@ -45,7 +45,7 @@ Each finding lists fixes that use real settings and commands, checked against th
    - the projects, agent types, sessions or plugin reviews behind it, when the transcripts can tell;
    - the weekly saving it estimates at list prices, and how. The estimates assume one fix at a time and do not add up. Effort and auto-compaction say they cannot be estimated in advance; compare measures them.
 
-   A fix is offered only when your usage shows the problem and your settings are not already that way.
+   A fix is offered only when your usage shows the problem and the change would take effect: not when your user settings or environment already have that value, outrank it, or switch the feature off. Project and managed settings files also outrank the user file, and the plan does not read them.
 3. Claude asks one question per fix, with "Skip" first and "Show details" next. Alternatives, such as running the security-guidance per-turn review on Sonnet or dropping it, share one question, and the script refuses both together.
 4. The script, not Claude, writes the chosen keys into your user `settings.json`, after backing it up. The apply command also goes through Claude Code's own permission prompt, so you approve twice.
 5. After a few days of normal use, `/limit-lens:fix compare` shows spend per active day and per request, and the share of each lens, before and after. `/limit-lens:fix revert` puts back only the keys it changed, and leaves alone any key you changed since.
