@@ -36,7 +36,7 @@ const NOTES = {
 const show = (v) => (v === undefined || v === null ? '(not set)' : `\`${JSON.stringify(v)}\``);
 
 // The fix plan the `fix` skill walks through with the user, one fix at a time.
-export function renderPlan({ fixes, habits, settingsFile, last }) {
+export function renderPlan({ fixes, habits, settingsFile, last, undo, warning }) {
   const lines = ['# limit-lens: fixes you can apply', '', `Settings file: \`${settingsFile}\` (backed up before any change; new settings apply to new sessions).`, ''];
   if (!fixes.length) lines.push('No settings fix applies right now: either nothing crossed its threshold, or your settings already have these values.', '');
   fixes.forEach((f, i) => {
@@ -52,6 +52,12 @@ export function renderPlan({ fixes, habits, settingsFile, last }) {
     const fixesList = last.changes.map((c) => `\`${c.fixId}\``).join(', ');
     lines.push('', '## Last experiment', '', `- \`${last.id}\`, applied ${last.appliedAt.slice(0, 16).replace('T', ' ')} UTC: ${fixesList}${last.revertedAt ? ' (reverted)' : ''}. Compare it after a few days of normal use.`);
   }
+  if (undo) {
+    lines.push('', `## Revert would restore (experiment \`${undo.id}\`)`, '');
+    for (const c of undo.changes) lines.push(`- \`${c.path.join('.')}\` -> ${c.hadKey ? show(c.restore) : '(removed)'}`);
+    lines.push('', `To undo exactly this, run revert with \`--experiment ${undo.id}\`.`);
+  }
+  if (warning) lines.push('', `Warning: ${warning}`);
   return lines.join('\n') + '\n';
 }
 

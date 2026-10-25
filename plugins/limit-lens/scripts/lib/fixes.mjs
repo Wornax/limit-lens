@@ -7,6 +7,14 @@ import { resolveModel } from './pricing.mjs';
 
 const MIN_MODEL_SHARE = 0.05;
 
+// An environment variable set in the settings file's env block or in the shell running the plan.
+// With `flag`, values such as "0" and "false" count as unset.
+function envSet(settings, name, flag = false) {
+  const v = getPath(settings, ['env', name]) ?? process.env[name];
+  if (v === undefined || v === null || v === '') return false;
+  return !flag || !['0', 'false', 'no', 'off'].includes(String(v).toLowerCase());
+}
+
 const DOCS = 'https://code.claude.com/docs/en';
 const SG_README = 'the security-guidance plugin README (Configuration section)';
 const isOpus = (k) => k.startsWith('opus');
@@ -38,9 +46,9 @@ export function applicableFixes(r, settings) {
     });
   }
 
-  // Effort: only levels you saved per model can be changed here.
+  // Effort: only levels you saved per model can be changed here; an environment override wins over them.
   const highEffort = (r.byEffort.xhigh?.cost || 0) + (r.byEffort.max?.cost || 0);
-  if (share(highEffort) >= 0.3) {
+  if (share(highEffort) >= 0.3 && !envSet(settings, 'CLAUDE_CODE_EFFORT_LEVEL')) {
     const saved = getPath(settings, ['modelSettings']) || {};
     for (const [modelId, conf] of Object.entries(saved)) {
       if (conf?.effortLevel !== 'xhigh') continue;
@@ -51,7 +59,7 @@ export function applicableFixes(r, settings) {
         id: `effort-high-${modelId}`,
         finding: 'effort',
         title: `Save effort "high" for ${modelId}`,
-        why: `${pct(highEffort, total)} of spend ran at xhigh or max effort, and ${modelId} is saved at xhigh. High still reasons deeply; use /effort xhigh or max for a hard problem when you need it.`,
+        why: `${pct(highEffort, total)} of spend ran at xhigh or max effort, and ${modelId} is saved at xhigh. High still reasons deeply. For a hard problem, use /effort max (this session only) or pick xhigh with s in the /effort slider (this session only); a level typed after /effort is saved as your default.`,
         path: ['modelSettings', modelId, 'effortLevel'],
         value: 'high',
         docs: `${DOCS}/model-config#adjust-effort-level`,
@@ -60,13 +68,16 @@ export function applicableFixes(r, settings) {
   }
 
   // Compact long conversations earlier.
+  // The env variable and a per-model window both override the top-level key, so skip when either is set.
   const autoCompact = getPath(settings, ['autoCompactWindow']);
-  if (share(r.components.cacheRead) >= 0.25 && r.context.requestsOver200k > 0 && !(typeof autoCompact === 'number' && autoCompact <= 300_000)) {
+  const perModelWindow = Object.values(getPath(settings, ['modelSettings']) || {}).some((c) => c?.autoCompactWindow !== undefined);
+  const overridden = envSet(settings, 'CLAUDE_CODE_AUTO_COMPACT_WINDOW') || perModelWindow;
+  if (share(r.components.cacheRead) >= 0.25 && r.context.requestsOver200k > 0 && !overridden && !(typeof autoCompact === 'number' && autoCompact <= 300_000)) {
     offer({
       id: 'autocompact-300k',
       finding: 'reread',
       title: 'Compact conversations at 300K tokens',
-      why: `Re-reading context is ${pct(r.components.cacheRead, total)} of spend and ${r.context.requestsOver200k.toLocaleString('en-US')} requests were over 200K tokens. Compacting earlier keeps long sessions smaller; each compaction costs one summary request. A level you saved with /autocompact for a model may take precedence.`,
+      why: `Re-reading context is ${pct(r.components.cacheRead, total)} of spend and ${r.context.requestsOver200k.toLocaleString('en-US')} requests were over 200K tokens. Compacting earlier keeps long sessions smaller; each compaction costs one summary request.`,
       path: ['autoCompactWindow'],
       value: 300_000,
       docs: `${DOCS}/model-config#set-the-auto-compact-window`,
@@ -79,26 +90,32 @@ export function applicableFixes(r, settings) {
     offer({
       id: 'cross-session-hold',
       finding: 'automation',
-      title: 'Hold messages from other sessions while idle',
-      why: `Messages from other sessions started turns that cost ${pct(peer, total)} of spend, each re-reading the whole conversation. With hold, they wait instead of starting a turn on their own.`,
+      title: 'Hold messages from other sessions',
+      why: `Messages from other sessions started turns that cost ${pct(peer, total)} of spend, each re-reading the whole conversation. With hold, Claude Code shows a notice for each message and does not deliver it to Claude (up to 100 are kept, released only if you switch back to accept). Choose it only if you do not rely on your sessions messaging each other.`,
       path: ['crossSessionInbound'],
       value: 'hold',
-      docs: `${DOCS}/costs#why-usage-climbs-in-a-long-session`,
+      docs: `${DOCS}/cross-session-messaging#control-inbound-messages`,
     });
   }
 
-  // security-guidance reviews.
-  const sgSessions = r.toolSessions['security-guidance review'];
-  if (sgSessions || r.plugins.securityGuidance) {
+  // security-guidance reviews, each fix on its own evidence. Its model variables take the provider's own
+  // model id (Bedrock, Vertex and Foundry differ), so the model fixes are offered on the first-party API only.
+  const sgReviews = r.plugins.securityGuidance?.reviews || {};
+  const stopReviews = (sgReviews.stop?.count || 0) > 0 || r.outside.cost > 0;
+  const agenticReviews = Boolean(r.toolSessions['security-guidance review']) || (sgReviews.commit?.count || 0) + (sgReviews.push?.count || 0) > 0;
+  const thirdParty = ['CLAUDE_CODE_USE_BEDROCK', 'CLAUDE_CODE_USE_VERTEX', 'CLAUDE_CODE_USE_FOUNDRY'].some((k) => envSet(settings, k, true));
+  if (stopReviews && !thirdParty) {
     offer({
       id: 'security-review-sonnet',
       finding: 'plugins',
       title: 'security-guidance: per-turn diff review on Sonnet',
-      why: 'The security-guidance plugin reviews on the newest Opus by default. Sonnet finds slightly less but costs half as much.',
+      why: 'The security-guidance plugin reviews on the newest Opus by default. Sonnet finds slightly less but costs half as much. This is an alternative to dropping that review (security-stop-review-off): with both, this one has no effect.',
       path: ['env', 'SECURITY_REVIEW_MODEL'],
       value: 'claude-sonnet-5-5',
       docs: SG_README,
     });
+  }
+  if (agenticReviews && !thirdParty) {
     offer({
       id: 'security-agentic-sonnet',
       finding: 'plugins',
@@ -108,17 +125,17 @@ export function applicableFixes(r, settings) {
       value: 'claude-sonnet-5-5',
       docs: SG_README,
     });
-    if (r.outside.cost > 0) {
-      offer({
-        id: 'security-stop-review-off',
-        finding: 'plugins',
-        title: 'security-guidance: drop the review after every turn',
-        why: 'Keeps the commit and push reviews, which see everything that lands; drops the review that runs every time Claude finishes a turn with changes.',
-        path: ['env', 'ENABLE_STOP_REVIEW'],
-        value: '0',
-        docs: SG_README,
-      });
-    }
+  }
+  if (stopReviews) {
+    offer({
+      id: 'security-stop-review-off',
+      finding: 'plugins',
+      title: 'security-guidance: drop the review after every turn',
+      why: 'Keeps the commit and push reviews, which see everything that lands; drops the review that runs every time Claude finishes a turn with changes.',
+      path: ['env', 'ENABLE_STOP_REVIEW'],
+      value: '0',
+      docs: SG_README,
+    });
   }
 
   // Fast mode left on.
@@ -136,12 +153,13 @@ export function applicableFixes(r, settings) {
 
   // Default model.
   const model = getPath(settings, ['model']);
-  if (typeof model === 'string' && /opus/i.test(model) && share(sumOpus(r.byModel)) >= 0.6) {
+  // opusplan already uses Opus only for planning, so it is left alone.
+  if (typeof model === 'string' && /opus/i.test(model) && !/^opusplan/i.test(model) && share(sumOpus(r.byModel)) >= 0.6) {
     offer({
       id: 'default-model-sonnet',
       finding: 'models',
       title: 'Start new sessions on Sonnet',
-      why: `Opus models were ${pct(sumOpus(r.byModel), total)} of spend. New sessions would start on Sonnet 5.5 (half the list price); switch with /model opus at the start of a session that needs it.`,
+      why: `Opus models were ${pct(sumOpus(r.byModel), total)} of spend. New sessions would start on Sonnet, which costs less than Opus (on the Anthropic API, Sonnet 5.5 lists at half the price of Opus 5.5); switch with /model opus at the start of a session that needs it.`,
       path: ['model'],
       value: 'sonnet',
       docs: `${DOCS}/model-config`,

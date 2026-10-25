@@ -54,16 +54,17 @@ test('auto-compaction is offered only when contexts get huge and it is not alrea
   assert.ok(!ids(applicableFixes(r, { autoCompactWindow: 200000 })).includes('autocompact-300k'));
 });
 
-test('security-guidance fixes appear when the plugin shows up, and the stop review only when it spent', async () => {
+test('security-guidance fixes follow the reviews that actually ran', async () => {
   const r = await report();
   r.toolSessions = { 'security-guidance review': { cost: 3, requests: 30, sessions: 3 } };
   let got = ids(applicableFixes(r, {}));
-  assert.ok(got.includes('security-review-sonnet'));
   assert.ok(got.includes('security-agentic-sonnet'));
+  assert.ok(!got.includes('security-review-sonnet'));
   assert.ok(!got.includes('security-stop-review-off'));
   r.outside.cost = 2;
   r.plugins.securityGuidance = { reviews: {}, outsideTranscriptsCost: 2 };
   got = ids(applicableFixes(r, {}));
+  assert.ok(got.includes('security-review-sonnet'));
   assert.ok(got.includes('security-stop-review-off'));
 });
 

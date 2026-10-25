@@ -7,7 +7,7 @@ import { defaultConfigDirs, securityGuidanceLogFile } from './lib/discover.mjs';
 import { findings } from './lib/findings.mjs';
 import { habits } from './lib/fixes.mjs';
 import { metrics, renderCompare } from './lib/compare.mjs';
-import { currentPlan, applyFixes, revertExperiment, latestExperiment, settingsPath } from './lib/experiments.mjs';
+import { currentPlan, applyFixes, revertExperiment, findExperiment, planHistory, settingsPath } from './lib/experiments.mjs';
 import { userConfigDir } from './lib/settings.mjs';
 import { renderMarkdown, renderPlan, anonymizer, clean, UUID } from './lib/report.mjs';
 
@@ -120,7 +120,7 @@ try {
     const report = await analyze({ projectsDirs, now, days: 7, securityLog });
     if (opts.command === 'plan') {
       const fixes = currentPlan(settingsDir, report);
-      const plan = { settingsFile: settingsPath(settingsDir), fixes, habits: habits(report), last: latestExperiment(settingsDir) };
+      const plan = { settingsFile: settingsPath(settingsDir), fixes, habits: habits(report), ...planHistory(settingsDir) };
       out(opts.json ? JSON.stringify(plan, null, 2) + '\n' : renderPlan(plan));
     } else {
       const exp = applyFixes({ configDir: settingsDir, fixIds: opts.ids, report, now });
@@ -130,7 +130,7 @@ try {
       out(lines.join('\n') + '\n');
     }
   } else if (opts.command === 'compare') {
-    const exp = latestExperiment(settingsDir, opts.experiment);
+    const exp = findExperiment(settingsDir, opts.experiment);
     if (!exp) out('No experiment yet: apply a fix first (`limit-lens plan`, then `limit-lens apply FIX_ID`).\n');
     else {
       const from = Date.parse(exp.appliedAt);

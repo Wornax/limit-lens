@@ -139,7 +139,7 @@ export function findings(r) {
         'Every automated turn (a loop firing, a background task reporting back, a message from another session) re-reads the whole conversation: keep them out of long sessions.',
         'Run loops in a short, dedicated session, on Sonnet or a lower effort; `/usage` (press `w`) lists your heaviest loops.',
         'Launch background work in fewer, larger batches so fewer notifications wake a big conversation.',
-        'Hold messages from other sessions while idle with `"crossSessionInbound": "hold"`; turn off goal check-ins with `CLAUDE_CODE_GOAL_CHECKIN_MINUTES=0`.',
+        'If you do not rely on your sessions messaging each other, `"crossSessionInbound": "hold"` stops their messages from starting turns (they are shown as notices, not delivered). Turn off goal check-ins with `CLAUDE_CODE_GOAL_CHECKIN_MINUTES=0`.',
       ],
       docs: [`${DOCS}/costs#why-usage-climbs-in-a-long-session`],
     });
