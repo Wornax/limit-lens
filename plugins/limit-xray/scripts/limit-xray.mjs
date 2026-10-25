@@ -11,8 +11,9 @@ import { habitsWithFindings } from './lib/fixes.mjs';
 import { metrics, renderCompare } from './lib/compare.mjs';
 import { currentPlan, applyFixes, revertExperiment, findExperiment, planHistory, settingsPath, stateDir } from './lib/experiments.mjs';
 import { renderDashboard } from './lib/dashboard.mjs';
-import { userConfigDir } from './lib/settings.mjs';
+import { userConfigDir, readSettings } from './lib/settings.mjs';
 import { renderMarkdown, renderPlan, renderAnalyze, diagnosis, questions, contributorName, anonymizer, clean, UUID } from './lib/report.mjs';
+import { langOf, resolveLang, locale } from './lib/i18n/index.mjs';
 
 const USAGE = `Usage: limit-xray [command] [options]
 
@@ -29,6 +30,7 @@ Options:
   --anonymize        replace project folder names with project-1, project-2, ...
   --json             print raw JSON
   --open             analyze only: open the dashboard page in your browser
+  --lang en|pt       language of the output (default: LIMIT_XRAY_LANG, then Claude Code's language setting, then en)
   --config-dir PATH  Claude config folder (default: CLAUDE_CONFIG_DIR, ~/.claude and ~/.config/claude)
 `;
 
@@ -68,7 +70,10 @@ function parseArgs(rawArgv) {
     else if (a === '--anonymize') opts.anonymize = true;
     else if (a === '--json') opts.json = true;
     else if (a === '--open') opts.open = true;
-    else if (a === '--config-dir') opts.configDir = value();
+    else if (a === '--lang') {
+      opts.lang = value();
+      if (!langOf(opts.lang)) fail('--lang must be en or pt');
+    } else if (a === '--config-dir') opts.configDir = value();
     else if (a === '--experiment') opts.experiment = value();
     else if (a === '--now') {
       // Undocumented: pins the window's end, for tests.
@@ -141,36 +146,53 @@ function openInBrowser(file) {
   }
 }
 
+// Claude Code's `language` setting, from the most specific settings file that sets it: the project's local
+// file, the project's shared file (both under the working folder), then the user's. A broken file counts as unset.
+function languageSetting(dir) {
+  for (const file of [path.resolve('.claude', 'settings.local.json'), path.resolve('.claude', 'settings.json'), settingsPath(dir)]) {
+    try {
+      const value = readSettings(file).data.language;
+      if (value) return value;
+    } catch {
+      // unreadable or not JSON: try the next file
+    }
+  }
+  return undefined;
+}
+
 const opts = parseArgs(process.argv.slice(2));
 const now = opts.now ?? Date.now();
 const configDirs = opts.configDir ? [opts.configDir] : defaultConfigDirs();
 const projectsDirs = configDirs.map((d) => path.join(d, 'projects'));
 const securityLog = securityGuidanceLogFile(opts.configDir);
 const settingsDir = userConfigDir(opts.configDir);
+const lang = resolveLang({ flag: opts.lang, env: process.env.LIMIT_XRAY_LANG, setting: languageSetting(settingsDir) });
+const { cli: T, names } = locale(lang).t;
+const code = (v) => `\`${JSON.stringify(v)}\``;
 const out = (text) => process.stdout.write(text);
 
 try {
   if (opts.command === 'report') {
     const report = await analyze({ projectsDirs, now, days: opts.days, project: opts.project, securityLog });
-    const found = findings(report);
+    const found = findings(report, { lang });
     if (opts.json) {
       sanitizeJson(report, opts.anonymize);
       out(JSON.stringify({ report, findings: found }, null, 2) + '\n');
     } else {
-      out(renderMarkdown(report, found, { anonymize: opts.anonymize, searched: projectsDirs }));
+      out(renderMarkdown(report, found, { anonymize: opts.anonymize, searched: projectsDirs, lang }));
     }
   } else if (opts.command === 'analyze' || opts.command === 'plan' || opts.command === 'apply') {
     // Fixes are judged on the last 7 days, the same window compare measures against.
     const report = await analyze({ projectsDirs, now, days: 7, securityLog });
     if (opts.command !== 'apply') {
-      const fixes = currentPlan(settingsDir, report);
-      const found = findings(report);
-      const habitList = habitsWithFindings(report);
+      const fixes = currentPlan(settingsDir, report, { lang });
+      const found = findings(report, { lang });
+      const habitList = habitsWithFindings(report, { lang });
       const plan = { settingsFile: settingsPath(settingsDir), fixes, habits: habitList.map((h) => h.text), ...planHistory(settingsDir) };
       if (opts.json) {
         // Names from disk are cleaned, as in the Markdown; plan leaves the full report out.
         for (const f of fixes) for (const c of f.contributors) c.name = contributorName(c);
-        const extra = { diagnosis: diagnosis(report, found), questions: questions(fixes).map((q) => ({ title: q.title, what: q.what, group: q.group, options: q.options.map((f) => f.id) })) };
+        const extra = { diagnosis: diagnosis(report, found), questions: questions(fixes, { lang }).map((q) => ({ title: q.title, what: q.what, group: q.group, options: q.options.map((f) => f.id) })) };
         if (opts.command === 'analyze') sanitizeJson(report, false);
         out(JSON.stringify(opts.command === 'analyze' ? { report, findings: found, ...extra, ...plan } : { ...extra, ...plan }, null, 2) + '\n');
       } else {
@@ -178,46 +200,47 @@ try {
         if (opts.command === 'analyze' && report.totals.requests) {
           const file = path.join(stateDir(settingsDir), 'dashboard.html');
           fs.mkdirSync(path.dirname(file), { recursive: true });
-          fs.writeFileSync(file, renderDashboard({ report, found, fixes, habits: habitList, ...plan, generatedAt: now }));
+          // plan.habits holds only the texts; the dashboard needs each habit's finding too, so habitList goes last.
+          fs.writeFileSync(file, renderDashboard({ report, found, fixes, ...plan, habits: habitList, generatedAt: now, lang }));
           dashboard = { file, opened: Boolean(opts.open) && openInBrowser(file) };
         }
-        out(opts.command === 'analyze' ? renderAnalyze({ report, found, searched: projectsDirs, ...plan, habits: habitList, dashboard }) : renderPlan({ report, found, ...plan }));
+        out(opts.command === 'analyze' ? renderAnalyze({ report, found, searched: projectsDirs, ...plan, habits: habitList, dashboard, lang }) : renderPlan({ report, found, ...plan, lang }));
       }
     } else {
       const exp = applyFixes({ configDir: settingsDir, fixIds: opts.ids, report, now });
-      const lines = [`Applied ${exp.changes.length} fix${exp.changes.length === 1 ? '' : 'es'} (experiment \`${exp.id}\`):`, ''];
+      const lines = [T.applied({ n: exp.changes.length, id: exp.id }), ''];
       for (const c of exp.changes) {
         lines.push(c.kind === 'memory'
-          ? `- \`${c.fixId}\`: added the model-routing rule to \`${c.file}\``
-          : `- \`${c.fixId}\`: \`${c.path.join('.')}\` in \`${exp.settingsFile}\`: ${c.hadKey ? `\`${JSON.stringify(c.before)}\`` : '(not set)'} -> \`${JSON.stringify(c.after)}\``);
+          ? T.appliedMemory({ fixId: c.fixId, file: c.file })
+          : T.appliedSetting({ fixId: c.fixId, path: c.path.join('.'), file: exp.settingsFile, from: c.hadKey ? code(c.before) : names.notSet, to: code(c.after) }));
       }
       lines.push('');
-      if (exp.changes.some((c) => c.kind !== 'memory')) lines.push(exp.backup ? `Backup of the previous settings file: \`${exp.backup}\`.` : 'There was no settings file before; it was created.');
-      if (exp.memoryBackup) lines.push(`Backup of the previous CLAUDE.md: \`${exp.memoryBackup}\`.`);
-      lines.push('New settings and rules apply to new sessions. Compare after a few days of normal use; revert at any time.');
+      if (exp.changes.some((c) => c.kind !== 'memory')) lines.push(exp.backup ? T.backup({ file: exp.backup }) : T.created);
+      if (exp.memoryBackup) lines.push(T.memoryBackup({ file: exp.memoryBackup }));
+      lines.push(T.applyNext);
       out(lines.join('\n') + '\n');
     }
   } else if (opts.command === 'compare') {
     const exp = findExperiment(settingsDir, opts.experiment);
-    if (!exp) out('No experiment yet: apply a fix first (`limit-xray plan`, then `limit-xray apply FIX_ID`).\n');
+    if (!exp) out(`${T.noExperiment}\n`);
     else {
       const from = Date.parse(exp.appliedAt);
       const after = metrics(await analyze({ projectsDirs, from, to: Math.max(now, from + 1), securityLog }));
-      out(renderCompare(exp, after));
+      out(renderCompare(exp, after, { lang }));
     }
   } else if (opts.command === 'revert') {
-    const { experiment, restored, skipped, backup, memoryBackup, notes } = revertExperiment({ configDir: settingsDir, now, id: opts.experiment });
-    const lines = [`Reverted experiment \`${experiment.id}\`:`, ''];
+    const { experiment, restored, skipped, backup, memoryBackup, notes } = revertExperiment({ configDir: settingsDir, now, id: opts.experiment, lang });
+    const lines = [T.reverted({ id: experiment.id }), ''];
     for (const c of restored) {
-      lines.push(c.kind === 'memory' ? `- \`${c.file}\`: removed the model-routing rule` : `- \`${c.path.join('.')}\` restored to ${c.hadKey ? `\`${JSON.stringify(c.before)}\`` : '(not set)'} in \`${experiment.settingsFile}\``);
+      lines.push(c.kind === 'memory'
+        ? T.restoredMemory({ file: c.file })
+        : T.restoredSetting({ path: c.path.join('.'), to: c.hadKey ? code(c.before) : names.notSet, file: experiment.settingsFile }));
     }
-    for (const c of skipped) {
-      lines.push(c.kind === 'memory' ? `- \`${c.file}\`: the model-routing rule was left as is: it was edited since it was added` : `- \`${c.path.join('.')}\` left as is: it was changed since the fix was applied`);
-    }
+    for (const c of skipped) lines.push(c.kind === 'memory' ? T.skippedMemory({ file: c.file }) : T.skippedSetting({ path: c.path.join('.') }));
     if (backup || memoryBackup) lines.push('');
-    if (backup) lines.push(`Backup of the settings file before reverting: \`${backup}\`.`);
-    if (memoryBackup) lines.push(`Backup of CLAUDE.md before reverting: \`${memoryBackup}\`.`);
-    if (notes.length) lines.push('', ...notes.map((n) => `Note: ${n}`));
+    if (backup) lines.push(T.revertBackup({ file: backup }));
+    if (memoryBackup) lines.push(T.revertMemoryBackup({ file: memoryBackup }));
+    if (notes.length) lines.push('', ...notes.map((n) => T.note({ note: n })));
     out(lines.join('\n') + '\n');
   }
 } catch (e) {

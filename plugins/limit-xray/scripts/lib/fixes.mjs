@@ -11,12 +11,11 @@
 // - group: fixes in the same group are alternatives, asked as one question and never applied together;
 // - what: what the thing is, in plain words, for someone who has never heard of it.
 import { getPath } from './settings.mjs';
-import { pct } from './format.mjs';
+import { locale } from './i18n/index.mjs';
 import { resolveModel, sonnetSaving } from './pricing.mjs';
 
 const MIN_MODEL_SHARE = 0.05;
 const TOP = 3;
-const NOT_ESTIMABLE = 'cannot be estimated in advance; `/limit-xray:analyze compare` measures it after a few days.';
 
 // An environment variable set in the settings file's env block or in the shell running the plan.
 // With `flag`, values such as "0" and "false" count as unset.
@@ -27,7 +26,6 @@ function envSet(settings, name, flag = false) {
 }
 
 const DOCS = 'https://code.claude.com/docs/en';
-const SG_README = 'the security-guidance plugin README (Configuration section)';
 const isOpus = (k) => k.startsWith('opus');
 // Built-in agents that CLAUDE_CODE_SUBAGENT_MODEL alone does not move (sub-agents#choose-a-model).
 const UNMOVED_AGENTS = new Set(['Explore', 'Plan']);
@@ -45,9 +43,12 @@ function top(kind, entries) {
 }
 const projectsBy = (r, field) => top('project', Object.entries(r.byProject || {}).map(([p, b]) => [p, b[field] || 0]));
 
-export function applicableFixes(r, settings) {
+export function applicableFixes(r, settings, { lang = 'en' } = {}) {
   const total = r.totals.cost;
   if (!total) return [];
+  const loc = locale(lang);
+  const { pct, num } = loc;
+  const T = loc.t.fixes;
   const share = (x) => x / total;
   const weekly = (x) => (x * 7) / (r.window.days || 7);
   const out = [];
@@ -68,13 +69,13 @@ export function applicableFixes(r, settings) {
     offer({
       id: 'subagent-model-sonnet',
       finding: 'agents',
-      title: 'Run agents on Sonnet by default',
-      what: 'Subagents and workflow agents are helpers Claude starts for side tasks, such as searching the code, reviewing a change or running steps in parallel. Each runs on its own model; this setting is the default for agents that do not choose one.',
-      why: `Agents were ${pct(agentsCost, total)} of spend, ${pct(opusAgents, agentsCost)} of it on Opus outside the built-in Explore and Plan agents. Agents that do not choose a model themselves will run on Sonnet; agents with a model in their definition, and Explore and Plan, keep theirs.`,
+      title: T.subagentSonnet.title,
+      what: T.subagentSonnet.what,
+      why: T.subagentSonnet.why({ agents: pct(agentsCost, total), opus: pct(opusAgents, agentsCost) }),
       kind: 'changes-work',
-      effect: 'Agents without their own model run on Sonnet: cheaper and faster, a little weaker on the hardest reasoning.',
+      effect: T.subagentSonnet.effect,
       contributors: [...projectsBy(r, 'opusAgentCost'), ...top('agent type', Object.entries(types).filter(([t]) => !UNMOVED_AGENTS.has(t)))],
-      savings: { weekly: weekly(((opusSaving(r.agents.subagent.byModel) + opusSaving(r.agents.workflow.byModel)) * opusAgents) / opusAll), basis: 'what your agents\' Opus spend outside Explore and Plan would cost less on Sonnet 5.5 at list prices (half for Opus 5.5, more for older Opus); agents with a model in their definition keep it, so the real saving can be lower.' },
+      savings: { weekly: weekly(((opusSaving(r.agents.subagent.byModel) + opusSaving(r.agents.workflow.byModel)) * opusAgents) / opusAll), basis: T.subagentSonnet.basis },
       path: ['env', 'CLAUDE_CODE_SUBAGENT_MODEL'],
       value: 'sonnet',
       docs: `${DOCS}/sub-agents#choose-a-model`,
@@ -94,13 +95,13 @@ export function applicableFixes(r, settings) {
       offer({
         id: `effort-high-${modelId}`,
         finding: 'effort',
-        title: `Save effort "high" for ${modelId}`,
-        what: 'Effort is how hard Claude thinks before answering and how many tool calls it makes: low, medium, high, xhigh or max. Higher effort costs more per task; the level saved for a model is its default in new sessions.',
-        why: `${pct(highEffort, total)} of spend ran at xhigh or max effort, and ${modelId} is saved at xhigh. High still reasons deeply. For a hard problem, use /effort max (this session only) or pick xhigh with s in the /effort slider (this session only); a level typed after /effort is saved as your default.`,
+        title: T.effortHigh.title({ model: modelId }),
+        what: T.effortHigh.what,
+        why: T.effortHigh.why({ share: pct(highEffort, total), model: modelId }),
         kind: 'changes-work',
-        effect: `${modelId} thinks less deeply by default, with fewer tool calls; raise it for one session when a problem needs it.`,
+        effect: T.effortHigh.effect({ model: modelId }),
         contributors: top('project', Object.entries(r.byProject || {}).map(([p, b]) => [p, (b.highEffortByModel?.[key] || 0) + (b.highEffortByModel?.[`${key}~`] || 0)])),
-        savings: { weekly: null, basis: `Lower effort means less thinking and fewer tool calls, which ${NOT_ESTIMABLE}` },
+        savings: { weekly: null, basis: T.effortHigh.basis },
         path: ['modelSettings', modelId, 'effortLevel'],
         value: 'high',
         docs: `${DOCS}/model-config#adjust-effort-level`,
@@ -119,13 +120,13 @@ export function applicableFixes(r, settings) {
     offer({
       id: 'autocompact-300k',
       finding: 'reread',
-      title: 'Compact conversations at 300K tokens',
-      what: 'Every message re-sends the whole conversation, so a long session costs more with each turn. Auto-compaction replaces the conversation with a summary when it reaches a size limit, and the session continues from the summary.',
-      why: `Re-reading context is ${pct(r.components.cacheRead, total)} of spend and ${r.context.requestsOver300k.toLocaleString('en-US')} requests went past 300K tokens. Compacting earlier keeps long sessions smaller; each compaction costs one summary request.`,
+      title: T.autocompact.title,
+      what: T.autocompact.what,
+      why: T.autocompact.why({ share: pct(r.components.cacheRead, total), count: num(r.context.requestsOver300k) }),
       kind: 'changes-work',
-      effect: 'Long sessions are summarized once they reach 300K tokens, so details from early in a session can be lost.',
-      contributors: (r.contextSessions || []).map((s) => ({ kind: 'session', name: `${s.project}/${String(s.sessionId).slice(0, 8)}`, cost: s.cost, detail: `${s.requestsOver300k.toLocaleString('en-US')} requests over 300K, ${Math.round(s.avgPromptTokens / 1000)}K average` })),
-      savings: { weekly: null, basis: `Smaller contexts are cheaper to re-read, but summaries cost a request each and sessions differ, so it ${NOT_ESTIMABLE}` },
+      effect: T.autocompact.effect,
+      contributors: (r.contextSessions || []).map((s) => ({ kind: 'session', name: `${s.project}/${String(s.sessionId).slice(0, 8)}`, cost: s.cost, detail: T.autocompact.detail({ count: num(s.requestsOver300k), avg: Math.round(s.avgPromptTokens / 1000) }) })),
+      savings: { weekly: null, basis: T.autocompact.basis },
       path: ['autoCompactWindow'],
       value: 300_000,
       docs: `${DOCS}/model-config#set-the-auto-compact-window`,
@@ -138,13 +139,13 @@ export function applicableFixes(r, settings) {
     offer({
       id: 'cross-session-hold',
       finding: 'automation',
-      title: 'Hold messages from other sessions',
-      what: 'Your Claude Code sessions can send each other messages, for example when a session you started elsewhere reports back. Each message starts a turn in the session that receives it, which re-reads its whole conversation.',
-      why: `Messages from other sessions started turns that cost ${pct(peer, total)} of spend, each re-reading the whole conversation. With hold, Claude Code shows a notice for each message and does not deliver it to Claude (up to 100 are kept, released only if you switch back to accept). Choose it only if you do not rely on your sessions messaging each other.`,
+      title: T.crossSession.title,
+      what: T.crossSession.what,
+      why: T.crossSession.why({ share: pct(peer, total) }),
       kind: 'changes-work',
-      effect: 'Your sessions stop receiving each other\'s messages.',
+      effect: T.crossSession.effect,
       contributors: [],
-      savings: { weekly: weekly(peer), basis: 'up to what turns started by other sessions cost; those messages would no longer arrive.' },
+      savings: { weekly: weekly(peer), basis: T.crossSession.basis },
       path: ['crossSessionInbound'],
       value: 'hold',
       docs: `${DOCS}/cross-session-messaging#control-inbound-messages`,
@@ -174,40 +175,40 @@ export function applicableFixes(r, settings) {
   // The plugin turns its per-turn review off only for the exact value "0".
   const stopOff = sgOff || String(getPath(settings, ['env', 'ENABLE_STOP_REVIEW']) ?? process.env.ENABLE_STOP_REVIEW) === '0';
   const logAgenticCost = (sgReviews.commit?.cost || 0) + (sgReviews.push?.cost || 0);
-  const stopContributors = sgReviews.stop?.count ? [{ kind: 'review', name: 'per-turn reviews', cost: sgReviews.stop.cost, detail: `${sgReviews.stop.count} reviews` }] : [];
+  const stopContributors = sgReviews.stop?.count ? [{ kind: 'review', name: T.securityReview.contributor, cost: sgReviews.stop.cost, detail: T.securityReview.detail({ count: num(sgReviews.stop.count) }) }] : [];
   if (stopReviews && !stopOff && !thirdParty && onOpus('SECURITY_REVIEW_MODEL')) {
     offer({
       id: 'security-review-sonnet',
       finding: 'plugins',
       group: 'security-turn-review',
-      title: 'security-guidance: per-turn diff review on Sonnet',
-      what: 'security-guidance is a plugin that reviews the code Claude changes for security problems: after every turn that changed files, and at each commit and push. Each review is a separate call to the model.',
-      why: 'The security-guidance plugin reviews on the newest Opus by default. Sonnet finds slightly less but costs half as much.',
+      title: T.securityReview.title,
+      what: T.securityReview.what,
+      why: T.securityReview.why,
       kind: 'cost-only',
-      effect: 'Your sessions work the same; the plugin\'s per-turn review may catch slightly fewer issues.',
+      effect: T.securityReview.effect,
       contributors: stopContributors,
-      savings: { weekly: weekly(stopCost * sgSaving('SECURITY_REVIEW_MODEL')), basis: 'what the per-turn reviews in the plugin\'s log would cost less on Sonnet 5.5 (half, from the default Opus 5.5); the log only keeps recent history.' },
+      savings: { weekly: weekly(stopCost * sgSaving('SECURITY_REVIEW_MODEL')), basis: T.securityReview.basis },
       path: ['env', 'SECURITY_REVIEW_MODEL'],
       value: 'claude-sonnet-5-5',
-      docs: SG_README,
+      docs: T.sgDocs,
     });
   }
   if (agenticReviews && !sgOff && !agenticOff && !thirdParty && onOpus('SG_AGENTIC_MODEL')) {
     offer({
       id: 'security-agentic-sonnet',
       finding: 'plugins',
-      title: 'security-guidance: commit and push reviews on Sonnet',
-      what: 'security-guidance is a plugin that reviews the code Claude changes for security problems: after every turn that changed files, and at each commit and push. Each review is a separate call to the model.',
-      why: 'Its commit and push reviews run full agent sessions on Opus by default.',
+      title: T.securityAgentic.title,
+      what: T.securityAgentic.what,
+      why: T.securityAgentic.why,
       kind: 'cost-only',
-      effect: 'Your sessions work the same; commit and push reviews may catch slightly fewer issues.',
-      contributors: sgSessions ? [{ kind: 'review', name: 'commit and push review sessions', cost: agenticCost, detail: `${sgSessions.sessions} sessions` }] : [],
+      effect: T.securityAgentic.effect,
+      contributors: sgSessions ? [{ kind: 'review', name: T.securityAgentic.contributor, cost: agenticCost, detail: T.securityAgentic.detail({ count: num(sgSessions.sessions) }) }] : [],
       savings: agenticCost
-        ? { weekly: weekly(agenticCost * sgSaving('SG_AGENTIC_MODEL')), basis: 'what the review sessions in your transcripts would cost less on Sonnet 5.5 (half, from the default Opus 5.5).' }
-        : { weekly: weekly(logAgenticCost * sgSaving('SG_AGENTIC_MODEL')), basis: 'what the commit and push reviews in the plugin\'s log would cost less on Sonnet 5.5 (half, from the default Opus 5.5); the log only keeps recent history.' },
+        ? { weekly: weekly(agenticCost * sgSaving('SG_AGENTIC_MODEL')), basis: T.securityAgentic.basisSessions }
+        : { weekly: weekly(logAgenticCost * sgSaving('SG_AGENTIC_MODEL')), basis: T.securityAgentic.basisLog },
       path: ['env', 'SG_AGENTIC_MODEL'],
       value: 'claude-sonnet-5-5',
-      docs: SG_README,
+      docs: T.sgDocs,
     });
   }
   if (stopReviews && !stopOff) {
@@ -215,16 +216,16 @@ export function applicableFixes(r, settings) {
       id: 'security-stop-review-off',
       finding: 'plugins',
       group: 'security-turn-review',
-      title: 'security-guidance: drop the review after every turn',
-      what: 'security-guidance is a plugin that reviews the code Claude changes for security problems: after every turn that changed files, and at each commit and push. Each review is a separate call to the model.',
-      why: 'Keeps the commit and push reviews, which see everything that lands; drops the review that runs every time Claude finishes a turn with changes.',
+      title: T.securityStop.title,
+      what: T.securityStop.what,
+      why: T.securityStop.why,
       kind: 'cost-only',
-      effect: 'Your sessions work the same; issues are caught at commit or push instead of after each turn.',
+      effect: T.securityStop.effect,
       contributors: stopContributors,
-      savings: { weekly: weekly(stopCost), basis: 'what the per-turn reviews cost in the plugin\'s log (the log only keeps recent history).' },
+      savings: { weekly: weekly(stopCost), basis: T.securityStop.basis },
       path: ['env', 'ENABLE_STOP_REVIEW'],
       value: '0',
-      docs: SG_README,
+      docs: T.sgDocs,
     });
   }
 
@@ -235,13 +236,13 @@ export function applicableFixes(r, settings) {
     offer({
       id: 'fast-mode-off',
       finding: 'fast',
-      title: 'Turn fast mode off by default',
-      what: 'Fast mode makes Opus answer faster for twice the price. With `"fastMode": true` in your settings, new sessions start with it on.',
-      why: `Fast mode ran ${r.fastMode.requests.toLocaleString('en-US')} requests at twice the Opus price, paid from usage credits on a subscription. Turn it on with /fast when you need the speed.`,
+      title: T.fastOff.title,
+      what: T.fastOff.what,
+      why: T.fastOff.why({ requests: num(r.fastMode.requests) }),
       kind: 'changes-work',
-      effect: 'Responses are slower unless you turn fast mode on with /fast.',
+      effect: T.fastOff.effect,
       contributors: [],
-      savings: { weekly: weekly(r.fastMode.cost / 2), basis: 'half of fast-mode spend (fast mode bills twice the standard price), paid from usage credits.' },
+      savings: { weekly: weekly(r.fastMode.cost / 2), basis: T.fastOff.basis },
       path: ['fastMode'],
       value: false,
       docs: `${DOCS}/fast-mode`,
@@ -256,13 +257,13 @@ export function applicableFixes(r, settings) {
     offer({
       id: 'default-model-sonnet',
       finding: 'models',
-      title: 'Start new sessions on Sonnet',
-      what: 'The default model is the one every new session starts on; `/model` switches it for the session you are in. Sonnet costs half as much as Opus and handles most everyday coding.',
-      why: `Opus models were ${pct(sumOpus(r.byModel), total)} of spend. New sessions would start on Sonnet, which costs less than Opus (on the Anthropic API, Sonnet 5.5 lists at half the price of Opus 5.5); switch with /model opus at the start of a session that needs it.`,
+      title: T.defaultSonnet.title,
+      what: T.defaultSonnet.what,
+      why: T.defaultSonnet.why({ share: pct(sumOpus(r.byModel), total) }),
       kind: 'changes-work',
-      effect: 'New sessions start on Sonnet; you choose Opus with /model when a task needs it.',
+      effect: T.defaultSonnet.effect,
       contributors: projectsBy(r, 'opusMainCost'),
-      savings: { weekly: weekly(opusMain * saving), basis: 'what your main conversations\' Opus spend would cost less on Sonnet 5.5 at list prices (half for Opus 5.5, more for older Opus); sessions you switch back to Opus keep its price.' },
+      savings: { weekly: weekly(opusMain * saving), basis: T.defaultSonnet.basis },
       path: ['model'],
       value: 'sonnet',
       docs: `${DOCS}/model-config`,
@@ -273,8 +274,11 @@ export function applicableFixes(r, settings) {
 
 // The model-routing rule: asked first, whenever agents spend, unless CLAUDE.md already routes
 // (the caller checks that). The skill ships with this plugin; the rule makes Claude load it every time.
-export function routingFix(r, { file, rule }) {
+export function routingFix(r, { file, rule, lang = 'en' }) {
   const total = r.totals.cost;
+  const loc = locale(lang);
+  const { pct } = loc;
+  const T = loc.t.fixes.routing;
   const agentsCost = r.agents.subagent.cost + r.agents.workflow.cost;
   if (!total || agentsCost / total < 0.01) return null;
   const opusAgents = sumOpus(r.agents.subagent.byModel) + sumOpus(r.agents.workflow.byModel);
@@ -284,13 +288,13 @@ export function routingFix(r, { file, rule }) {
     id: 'model-routing-rule',
     finding: 'agents',
     target: 'memory',
-    title: 'Turn on model routing for agents',
-    what: 'Model routing means choosing, for each task Claude hands to a subagent or workflow agent, the smallest model that gets it right the first time: Haiku for fixed recipes with a check (run a known command, rename), Sonnet for most coding, reviews and fixes, Opus for design, decisions and anything risky (money, user data, security, deploys), plus the effort for each. This plugin ships those rules as a guide, the `model-routing` skill; the line added to CLAUDE.md makes Claude follow it every time it starts an agent and say which model it picked.',
-    why: `Agents were ${pct(agentsCost, total)} of spend, ${pct(opusAgents, agentsCost)} of it on Opus. Without the line, Claude reads the guide only when it decides to, and each agent runs on its default model, usually your session's.`,
+    title: T.title,
+    what: T.what,
+    why: T.why({ agents: pct(agentsCost, total), opus: pct(opusAgents, agentsCost) }),
     kind: 'changes-work',
-    effect: 'Claude chooses a model and effort for each agent it starts and says which one; routine agent work moves off Opus, hard or risky work stays on it.',
+    effect: T.effect,
     contributors: top('agent type', Object.entries(types)),
-    savings: { weekly: null, basis: `It depends on which tasks move to a smaller model, so it ${NOT_ESTIMABLE}` },
+    savings: { weekly: null, basis: T.basis },
     file,
     rule,
     docs: `${DOCS}/memory`,
@@ -300,18 +304,19 @@ export function routingFix(r, { file, rule }) {
 
 // Habits only the user can adopt (slash commands are typed by the user). Each names the finding whose
 // suggestions already give the same advice, so a report that shows that finding need not repeat it.
-export function habitsWithFindings(r) {
+export function habitsWithFindings(r, { lang = 'en' } = {}) {
   const total = r.totals.cost;
   if (!total) return [];
+  const H = locale(lang).t.habits;
   const out = [];
   const share = (x) => x / total;
-  if (share(r.components.cacheRead) >= 0.25) out.push({ finding: 'reread', text: 'Run `/clear` between unrelated tasks, and `/compact` at natural breaks.' });
+  if (share(r.components.cacheRead) >= 0.25) out.push({ finding: 'reread', text: H.clear });
   const rb = r.cache.rebuilds;
-  if (share(rb.afterIdle.cost) >= 0.02) out.push({ finding: 'rebuilds', text: 'Run `/compact` before stepping away from a large session; after a long break, start fresh with `/clear`.' });
-  if (share(rb.modelSwitch.cost) >= 0.01) out.push({ finding: 'rebuilds', text: 'Pick the model with `/model` at the start of a session, not in the middle.' });
-  if (share((r.byEffort.max?.cost || 0)) >= 0.1) out.push({ finding: 'effort', text: '`max` effort cannot be saved, so it comes from `/effort max`, `--effort max` or an environment variable: keep it for hard problems.' });
-  if (share(r.turns.automated.cost) >= 0.05) out.push({ finding: 'automation', text: 'Run loops in a short, dedicated session, and check `/usage` (press `w`) for the heaviest ones.' });
+  if (share(rb.afterIdle.cost) >= 0.02) out.push({ finding: 'rebuilds', text: H.compactBeforeBreak });
+  if (share(rb.modelSwitch.cost) >= 0.01) out.push({ finding: 'rebuilds', text: H.modelAtStart });
+  if (share((r.byEffort.max?.cost || 0)) >= 0.1) out.push({ finding: 'effort', text: H.maxEffort });
+  if (share(r.turns.automated.cost) >= 0.05) out.push({ finding: 'automation', text: H.loops });
   return out;
 }
 
-export const habits = (r) => habitsWithFindings(r).map((h) => h.text);
+export const habits = (r, opts) => habitsWithFindings(r, opts).map((h) => h.text);

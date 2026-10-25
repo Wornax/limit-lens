@@ -1,27 +1,33 @@
-export const usd = (x) => {
-  if (x >= 1000) return `$${Math.round(x).toLocaleString('en-US')}`;
-  if (x >= 10) return `$${x.toFixed(0)}`;
-  if (x >= 0.01 || x === 0) return `$${x.toFixed(2)}`;
-  return '<$0.01';
-};
+// Numbers in a language's style: English writes $1,234.56, Portuguese US$ 1.234,56 (amounts are US dollars).
+export function numberStyle({ currency = '$', decimal = '.', thousands = ',' } = {}) {
+  const local = (s) => s.replace(/[.,]/g, (c) => (c === '.' ? decimal : thousands));
+  const usd = (x) => {
+    if (x >= 1000) return currency + local(Math.round(x).toLocaleString('en-US'));
+    if (x >= 10) return `${currency}${x.toFixed(0)}`;
+    if (x >= 0.01 || x === 0) return currency + local(x.toFixed(2));
+    return `<${currency}${local('0.01')}`;
+  };
+  const pct = (part, whole) => {
+    if (!whole) return '0%';
+    const p = (100 * part) / whole;
+    return p >= 10 || p === 0 ? `${Math.round(p)}%` : `${local(p.toFixed(1))}%`;
+  };
+  const tokens = (n) => (n >= 1_000_000 ? `${local((n / 1_000_000).toFixed(1))}M` : n >= 1000 ? `${Math.round(n / 1000)}K` : local(String(n)));
+  const num = (n) => local(n.toLocaleString('en-US'));
+  return { usd, pct, tokens, num };
+}
 
-export const pct = (part, whole) => {
-  if (!whole) return '0%';
-  const p = (100 * part) / whole;
-  return p >= 10 || p === 0 ? `${Math.round(p)}%` : `${p.toFixed(1)}%`;
-};
-
-export const tokens = (n) => (n >= 1_000_000 ? `${(n / 1_000_000).toFixed(1)}M` : n >= 1000 ? `${Math.round(n / 1000)}K` : String(n));
+export const { usd, pct, tokens, num } = numberStyle();
 
 export const sumCost = (map) => Object.values(map || {}).reduce((s, b) => s + (b.cost || 0), 0);
 
-// "a=$1 (10%), b=..." for the largest entries of a { key: { cost } } map.
-export function topEntries(map, whole, n = 3, label = (k) => k) {
+// "a 10%, b 5%" for the largest entries of a { key: { cost } } map.
+export function topEntries(map, whole, n = 3, label = (k) => k, percent = pct) {
   return Object.entries(map || {})
     .filter(([, b]) => b.cost > 0 && (!whole || b.cost / whole >= 0.001))
     .sort((a, b) => b[1].cost - a[1].cost)
     .slice(0, n)
-    .map(([k, b]) => `${label(k)} ${pct(b.cost, whole)}`)
+    .map(([k, b]) => `${label(k)} ${percent(b.cost, whole)}`)
     .join(', ');
 }
 

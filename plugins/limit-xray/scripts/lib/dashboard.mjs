@@ -1,17 +1,20 @@
 // The analyze dashboard: one self-contained HTML page with the report's numbers drawn as cards and bar
 // charts. It loads nothing from the network (no fonts, scripts or styles from elsewhere), so it opens the
 // same offline. Every string from disk or from the report is escaped; values are always printed beside
-// their bars, so a chart never hides a number.
-import { usd, pct, tokens, topEntries } from './format.mjs';
-import { clean, questions, contributorName, glanceData, otherSuggestions, notCounted, sessionLabel } from './report.mjs';
+// their bars, so a chart never hides a number. Texts come from the language catalogs (i18n/).
+import { clean, questions, contributorName, glanceData, otherSuggestions, notCounted, sessionLabel, entrypointName, kindLabel } from './report.mjs';
+import { locale, lookup } from './i18n/index.mjs';
 
 const ENT = { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' };
 const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ENT[c]);
 // Escaped text where `code` spans become <code>.
 const rich = (s) => esc(s).replace(/`([^`]+)`/g, '<code>$1</code>');
+// A path or id from disk placed inside a catalog text that goes through rich(): a backtick in it would
+// pair with the text's own and move the <code> spans, so it shows as a look-alike.
+const tick = (s) => String(s).replace(/`/g, 'ˋ');
 
-const ENTRYPOINTS = { cli: 'Terminal', 'claude-desktop': 'Desktop app', 'sdk-py': 'Python SDK', 'sdk-ts': 'TypeScript SDK' };
-const CONTRIBUTORS = { project: 'Biggest projects', 'agent type': 'Biggest agent types', session: 'Largest sessions', review: 'Reviews' };
+const cap = (s) => s.charAt(0).toUpperCase() + s.slice(1);
+const entrypoint = (t, k) => cap(entrypointName(t, k));
 
 // Horizontal bars: label, bar, value. `max` is the value of a full-width bar.
 function barList(rows, max, tone = 'spend') {
@@ -22,12 +25,13 @@ function barList(rows, max, tone = 'spend') {
 }
 
 // Columns for spend by day, the busiest day and today labelled on the cap; every day has a tooltip and a table row.
-function dayColumns(rows) {
+function dayColumns(rows, { t, usd, num }) {
+  const D = t.dashboard;
   const max = Math.max(...rows.map((x) => x.cost));
   const peak = rows.findIndex((x) => x.cost === max);
   const cols = rows.map((x, i) => {
     const h = max ? (x.cost / max) * 100 : 0;
-    const tip = `${x.label}: ${usd(x.cost)}, ${x.requests.toLocaleString('en-US')} requests`;
+    const tip = D.dayTip({ day: x.label, cost: usd(x.cost), requests: num(x.requests) });
     const value = (i === peak || i === rows.length - 1) && x.cost > 0 ? `<span class="col-value" style="bottom:calc(${h.toFixed(2)}% + 4px)">${esc(usd(x.cost))}</span>` : '';
     return `<div class="col" tabindex="0" data-tip="${esc(tip)}" aria-label="${esc(tip)}">${value}<span class="col-fill" style="height:${h.toFixed(2)}%"></span></div>`;
   });
@@ -35,88 +39,92 @@ function dayColumns(rows) {
     const [day, date] = x.label.split(' ');
     return `<span>${esc(day)}<br>${esc(date)}</span>`;
   });
-  const table = rows.map((x) => `<tr><td>${esc(x.label)}</td><td>${esc(usd(x.cost))}</td><td>${x.requests.toLocaleString('en-US')}</td></tr>`).join('');
+  const table = rows.map((x) => `<tr><td>${esc(x.label)}</td><td>${esc(usd(x.cost))}</td><td>${esc(num(x.requests))}</td></tr>`).join('');
   return `<div class="cols">${cols.join('')}</div><div class="col-axis">${axis.join('')}</div>
-<details class="table-view"><summary>Show as a table</summary><table><thead><tr><th>Day</th><th>Spend</th><th>Requests</th></tr></thead><tbody>${table}</tbody></table></details>`;
+<details class="table-view"><summary>${esc(D.asTable)}</summary><table><thead><tr><th>${esc(D.day)}</th><th>${esc(D.spendColumn)}</th><th>${esc(D.requestsColumn)}</th></tr></thead><tbody>${table}</tbody></table></details>`;
 }
 
 const meter = (share) => `<span class="meter" aria-hidden="true"><span style="width:${Math.min(100, Math.max(0, share * 100)).toFixed(2)}%"></span></span>`;
 
-function tile(label, cost, total, foot) {
+function tile(label, cost, total, foot, { pct }) {
   return `<div class="card tile"><p class="tile-label">${esc(label)}</p><p class="tile-value">${esc(pct(cost, total))}</p>${meter(total ? cost / total : 0)}<p class="tile-foot">${esc(foot)}</p></div>`;
 }
 
-const show = (v) => (v === undefined || v === null ? 'not set' : `<code>${esc(JSON.stringify(v))}</code>`);
+const show = (v, { t }) => (v === undefined || v === null ? esc(t.dashboard.notSet) : `<code>${esc(JSON.stringify(v))}</code>`);
 const source = (docs) => (/^https:\/\//.test(docs) ? `<a href="${esc(docs)}">${esc(docs.replace(/^https:\/\//, ''))}</a>` : rich(docs));
 
-function option(f, maxSaving, withTitle) {
+function option(f, maxSaving, withTitle, loc) {
+  const { t, usd } = loc;
+  const D = t.dashboard;
   const change = f.target === 'memory'
-    ? `Add to <code>${esc(f.file)}</code>: “${rich(f.rule)}”`
-    : `<code>${esc(f.path.join('.'))}</code>: ${show(f.current)} → ${show(f.value)}`;
+    ? rich(D.addTo({ file: tick(f.file), rule: f.rule }))
+    : `<code>${esc(f.path.join('.'))}</code>: ${show(f.current, loc)} → ${show(f.value, loc)}`;
   const kinds = [...new Set((f.contributors || []).map((c) => c.kind))];
-  const who = kinds.map((k) => `<dt>${esc(CONTRIBUTORS[k] || k)}</dt><dd>${f.contributors.filter((c) => c.kind === k)
+  const who = kinds.map((k) => `<dt>${esc(lookup(t.names.contributors, k))}</dt><dd>${f.contributors.filter((c) => c.kind === k)
     .map((c) => `${esc(contributorName(c))} <span class="muted">${esc(usd(c.cost))}${c.detail ? `, ${esc(c.detail)}` : ''}</span>`).join('<br>')}</dd>`).join('');
   const saving = f.savings?.weekly == null
     ? `<dd>${rich(f.savings?.basis || '')}</dd>`
-    : `<dd>${barList([{ label: 'per week', cost: f.savings.weekly, value: `about ${usd(f.savings.weekly)}` }], maxSaving, 'saving')}<span class="muted">${rich(f.savings.basis)}</span></dd>`;
+    : `<dd>${barList([{ label: D.perWeek, cost: f.savings.weekly, value: D.about({ cost: usd(f.savings.weekly) }) }], maxSaving, 'saving')}<span class="muted">${rich(f.savings.basis)}</span></dd>`;
   const costOnly = f.kind === 'cost-only';
   return `<div class="option">
 ${withTitle ? `<h4><code>${esc(f.id)}</code> ${esc(f.title)}</h4>` : ''}
-<p class="badge ${costOnly ? 'good' : 'warn'}"><span class="icon" aria-hidden="true">${costOnly ? '✓' : '!'}</span>${costOnly ? 'Cost only' : 'Changes how Claude works for you'}</p>
+<p class="badge ${costOnly ? 'good' : 'warn'}"><span class="icon" aria-hidden="true">${costOnly ? '✓' : '!'}</span>${esc(kindLabel(f, t))}</p>
 <p>${rich(f.effect)}</p>
-<dl><dt>Change</dt><dd>${change}</dd><dt>Why</dt><dd>${rich(f.why)}</dd>${who}<dt>Estimated saving</dt>${saving}<dt>Source</dt><dd>${source(f.docs)}</dd></dl>
+<dl><dt>${esc(D.change)}</dt><dd>${change}</dd><dt>${esc(D.why)}</dt><dd>${rich(f.why)}</dd>${who}<dt>${esc(D.saving)}</dt>${saving}<dt>${esc(D.source)}</dt><dd>${source(f.docs)}</dd></dl>
 </div>`;
 }
 
-export function renderDashboard({ report: r, found, fixes, habits = [], settingsFile, last = null, undo = null, active = [], warning = null, generatedAt = Date.now() }) {
+export function renderDashboard({ report: r, found, fixes, habits = [], settingsFile, last = null, undo = null, active = [], warning = null, generatedAt = Date.now(), lang = 'en' }) {
+  const loc = locale(lang);
+  const { t, usd, pct, tokens, num } = loc;
+  const D = t.dashboard;
   const total = r.totals.cost;
-  const glance = Object.fromEntries(glanceData(r, { projects: 5 }).map((s) => [s.id, s]));
+  const glance = Object.fromEntries(glanceData(r, { projects: 5, lang }).map((s) => [s.id, s]));
   const share = (x) => `${pct(x.cost, total)}  ${usd(x.cost)}`;
   const listCard = (s) => (s.rows.length ? `<section class="card"><h2>${esc(s.title)}</h2>${barList(s.rows.map((x) => ({ ...x, value: share(x) })), total)}</section>` : '');
-  const day = (iso) => new Date(iso).toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
   const opus = Object.entries(r.byModel).filter(([k]) => k.startsWith('opus')).reduce((s, [, b]) => s + b.cost, 0);
   const agents = r.agents.subagent.cost + r.agents.workflow.cost;
   const high = (r.byEffort.xhigh?.cost || 0) + (r.byEffort.max?.cost || 0);
-  const entry = { id: 'entry', title: 'Started from', rows: Object.entries(r.byEntrypoint).filter(([, b]) => b.cost > 0).sort((a, b) => b[1].cost - a[1].cost).slice(0, 4).map(([k, b]) => ({ label: ENTRYPOINTS[k] || clean(k), cost: b.cost })) };
-  const qs = questions(fixes);
+  const entry = { id: 'entry', title: D.startedFrom, rows: Object.entries(r.byEntrypoint).filter(([, b]) => b.cost > 0).sort((a, b) => b[1].cost - a[1].cost).slice(0, 4).map(([k, b]) => ({ label: entrypoint(t, k), cost: b.cost })) };
+  const qs = questions(fixes, { lang });
   const withSaving = fixes.filter((f) => f.savings?.weekly != null).sort((a, b) => b.savings.weekly - a.savings.weekly);
   const maxSaving = withSaving.length ? withSaving[0].savings.weekly : 0;
-  const suggestions = otherSuggestions(found, fixes, habits);
+  const suggestions = otherSuggestions(found, fixes, habits, { lang });
 
   const findingCards = found.slice(0, 6).map((f, i) => `<article class="card finding">
-<header><span class="rank">${i + 1}</span><h3>${esc(f.title)}</h3><span class="finding-value">${esc(pct(f.cost, total))} <span class="muted">${esc(usd(f.cost))}${f.outsideCost ? `, plus ${esc(usd(f.outsideCost))} outside the total` : ''}</span></span></header>
+<header><span class="rank">${i + 1}</span><h3>${esc(f.title)}</h3><span class="finding-value">${esc(pct(f.cost, total))} <span class="muted">${esc(usd(f.cost))}${f.outsideCost ? esc(D.outsideTotal({ cost: usd(f.outsideCost) })) : ''}</span></span></header>
 ${meter(total ? f.cost / total : 0)}
 <ul>${f.evidence.map((e) => `<li>${rich(e)}</li>`).join('')}</ul>
 </article>`).join('');
 
   const fixCards = qs.map((q, i) => `<article class="card fix">
-<header><span class="q">Question ${i + 1}</span><h3>${esc(q.title)}</h3></header>
-<p class="what"><strong>What it is.</strong> ${rich(q.what)}</p>
-${q.options.length > 1 ? '<p class="muted">Alternatives: choose one or neither.</p>' : ''}
-${q.options.map((f) => option(f, maxSaving, q.options.length > 1)).join('')}
+<header><span class="q">${esc(D.question({ n: i + 1 }))}</span><h3>${esc(q.title)}</h3></header>
+<p class="what"><strong>${esc(D.whatItIs)}</strong> ${rich(q.what)}</p>
+${q.options.length > 1 ? `<p class="muted">${esc(D.alternatives)}</p>` : ''}
+${q.options.map((f) => option(f, maxSaving, q.options.length > 1, loc)).join('')}
 </article>`).join('');
 
-  const sessions = r.topSessions.slice(0, 5).map((s, i) => `<tr><td>${esc(clean(s.project))}</td><td><code>${esc(sessionLabel(s.sessionId, i, false))}</code></td><td>${esc(ENTRYPOINTS[s.entrypoint] || clean(s.entrypoint))}</td><td>${esc(usd(s.cost))}</td><td>${s.requests.toLocaleString('en-US')}</td><td>${esc(tokens(s.avgPromptTokens))}</td><td>${esc(pct(s.rereadCost, s.cost))}</td></tr>`).join('');
+  const sessions = r.topSessions.slice(0, 5).map((s, i) => `<tr><td>${esc(clean(s.project))}</td><td><code>${esc(sessionLabel(s.sessionId, i, false))}</code></td><td>${esc(entrypoint(t, s.entrypoint))}</td><td>${esc(usd(s.cost))}</td><td>${esc(num(s.requests))}</td><td>${esc(tokens(s.avgPromptTokens))}</td><td>${esc(pct(s.rereadCost, s.cost))}</td></tr>`).join('');
 
   const history = [];
-  const when = (iso) => esc(iso.slice(0, 16).replace('T', ' '));
-  const change = (c) => (c.kind === 'memory' ? `the model-routing rule in <code>${esc(c.file)}</code>` : `<code>${esc(c.path.join('.'))}</code> = ${show(c.after)}`);
-  for (const e of active) history.push(`<div class="applied"><p><code>${esc(e.id)}</code> <span class="muted">applied ${when(e.appliedAt)} UTC</span></p><ul>${e.changes.map((c) => `<li>${change(c)}</li>`).join('')}</ul></div>`);
-  if (!active.length && last) history.push(`<p>Last change: <code>${esc(last.id)}</code>, applied ${when(last.appliedAt)} UTC: ${last.changes.map((c) => `<code>${esc(c.fixId)}</code>`).join(', ')}${last.revertedAt ? ' (reverted)' : ''}.</p>`);
+  const { utc } = loc;
+  const change = (c) => (c.kind === 'memory' ? rich(D.routingRule({ file: tick(c.file) })) : `<code>${esc(c.path.join('.'))}</code> = ${show(c.after, loc)}`);
+  for (const e of active) history.push(`<div class="applied"><p><code>${esc(e.id)}</code> <span class="muted">${esc(D.appliedAt({ when: utc(e.appliedAt) }))}</span></p><ul>${e.changes.map((c) => `<li>${change(c)}</li>`).join('')}</ul></div>`);
+  if (!active.length && last) history.push(`<p>${rich(D.lastChange({ id: tick(last.id), when: utc(last.appliedAt), fixes: last.changes.map((c) => `\`${tick(c.fixId)}\``).join(', '), reverted: Boolean(last.revertedAt) }))}</p>`);
   const inEffect = active.reduce((s, e) => s + e.changes.length, 0);
   if (undo) {
-    history.push(`<div class="applied"><p><code>/limit-xray:analyze revert</code> would undo <code>${esc(undo.id)}</code>:</p><ul>${undo.changes.map((c) => (c.kind === 'memory'
-      ? `<li><code>${esc(c.file)}</code>: the model-routing rule is removed</li>`
-      : `<li><code>${esc(c.path.join('.'))}</code> → ${c.hadKey ? show(c.restore) : 'removed'}</li>`)).join('')}</ul></div>`);
+    history.push(`<div class="applied"><p>${rich(D.wouldUndo({ id: tick(undo.id) }))}</p><ul>${undo.changes.map((c) => (c.kind === 'memory'
+      ? `<li>${rich(D.undoMemory({ file: tick(c.file) }))}</li>`
+      : `<li><code>${esc(c.path.join('.'))}</code> → ${c.hadKey ? show(c.restore, loc) : esc(D.removed)}</li>`)).join('')}</ul></div>`);
   }
   if (warning) history.push(`<p class="badge warn"><span class="icon" aria-hidden="true">!</span>${esc(warning)}</p>`);
 
   return `<!doctype html>
-<html lang="en">
+<html lang="${esc(D.htmlLang)}">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>limit-xray dashboard</title>
+<title>${esc(D.title)}</title>
 <style>
 :root {
   color-scheme: light;
@@ -226,26 +234,26 @@ footer ul { padding-left: 20px; }
 <main>
 <header>
 <p class="brand">limit-xray</p>
-<h1>Where your Claude Code limit goes</h1>
-<p class="sub">Last ${r.window.days} days, ${esc(day(r.window.from))} to ${esc(day(r.window.to))} · this computer · API list prices as of ${esc(r.pricesAsOf)}</p>
+<h1>${esc(D.heading)}</h1>
+<p class="sub">${esc(D.sub({ days: r.window.days, from: loc.monthDay(r.window.from), to: loc.monthDay(r.window.to), asOf: loc.date(r.pricesAsOf) }))}</p>
 </header>
 
 <section class="card hero">
-<p class="hero-label">API-equivalent spend</p>
+<p class="hero-label">${esc(D.spend)}</p>
 <p class="hero-value">${esc(usd(total))}</p>
-<p class="muted">${r.totals.requests.toLocaleString('en-US')} requests in ${r.totals.sessions.toLocaleString('en-US')} sessions${r.outside.cost ? `, plus ${esc(usd(r.outside.cost))} of plugin calls outside transcripts` : ''}. On a subscription this is not a bill: it shows how your usage limit was spent.</p>
-<p class="next">${qs.length ? `<strong>Next:</strong> Claude asks you about ${qs.length} fix${qs.length === 1 ? '' : 'es'} in the conversation, shown below. Nothing changes until you choose; every change is backed up, and <code>/limit-xray:analyze revert</code> undoes it.` : `<strong>Next:</strong> no fix applies right now${inEffect ? `: ${inEffect} change${inEffect === 1 ? '' : 's'} from earlier runs ${inEffect === 1 ? 'is' : 'are'} already in effect, listed at the end` : ''}. The suggestions below are yours to try.`}</p>
+<p class="muted">${esc(D.requests({ requests: num(r.totals.requests), sessions: num(r.totals.sessions), outside: r.outside.cost ? usd(r.outside.cost) : '' }))}</p>
+<p class="next"><strong>${esc(D.next)}</strong> ${qs.length ? rich(D.nextAsk({ n: qs.length })) : rich(D.nextNone({ inEffect }))}</p>
 </section>
 
 <div class="tiles">
-${tile('Re-reading context', r.components.cacheRead, total, `${usd(r.components.cacheRead)}: every request re-sends the conversation`)}
-${tile('On Opus', opus, total, `${usd(opus)} of spend on Opus models`)}
-${tile('In agents', agents, total, `${usd(agents)} in subagents and workflow agents`)}
-${tile('At xhigh or max effort', high, total, `${usd(high)} at the two highest effort levels`)}
+${tile(D.tileReread, r.components.cacheRead, total, D.tileRereadFoot({ cost: usd(r.components.cacheRead) }), loc)}
+${tile(D.tileOpus, opus, total, D.tileOpusFoot({ cost: usd(opus) }), loc)}
+${tile(D.tileAgents, agents, total, D.tileAgentsFoot({ cost: usd(agents) }), loc)}
+${tile(D.tileEffort, high, total, D.tileEffortFoot({ cost: usd(high) }), loc)}
 </div>
-<p class="muted">These overlap: one request can count in several.</p>
+<p class="muted">${esc(D.overlap)}</p>
 
-${glance.days.rows.length <= 45 ? `<section class="card"><h2>Spend by day</h2>${dayColumns(glance.days.rows)}</section>` : ''}
+${glance.days.rows.length <= 45 ? `<section class="card"><h2>${esc(glance.days.title)}</h2>${dayColumns(glance.days.rows, loc)}</section>` : ''}
 
 <div class="grid">
 ${listCard(glance.where)}
@@ -256,28 +264,28 @@ ${listCard(glance.projects)}
 ${listCard(entry)}
 </div>
 
-<h2 class="section-title">What is driving it</h2>
-<p class="note">Each finding is a share of the total; they overlap.</p>
-<div class="findings">${findingCards || '<p class="card">Nothing stands out: no lens crossed its threshold.</p>'}</div>
+<h2 class="section-title">${esc(D.driving)}</h2>
+<p class="note">${esc(D.drivingNote)}</p>
+<div class="findings">${findingCards || `<p class="card">${esc(t.report.nothing)}</p>`}</div>
 
-<h2 class="section-title">Fixes you can apply</h2>
-<p class="note">Claude asks about each one in the conversation, Skip first. The settings file is <code>${esc(settingsFile)}</code>; changes apply to new sessions.</p>
-${withSaving.length ? `<section class="card"><h2>Estimated weekly savings</h2>${barList(withSaving.map((f) => ({ label: f.title, cost: f.savings.weekly, value: `about ${usd(f.savings.weekly)}` })), maxSaving, 'saving')}<p class="muted" style="margin-top:10px">Each estimate assumes that fix alone, at list prices; they do not add up. Effort, auto-compaction and model routing are measured after a few days instead.</p></section>` : ''}
-<div class="fixes">${fixCards || '<p class="card">No fix applies right now: either nothing crossed its threshold, or your settings already have these values.</p>'}</div>
+<h2 class="section-title">${esc(D.fixesTitle)}</h2>
+<p class="note">${rich(D.fixesNote({ file: tick(settingsFile) }))}</p>
+${withSaving.length ? `<section class="card"><h2>${esc(D.savingsTitle)}</h2>${barList(withSaving.map((f) => ({ label: f.title, cost: f.savings.weekly, value: D.about({ cost: usd(f.savings.weekly) }) })), maxSaving, 'saving')}<p class="muted" style="margin-top:10px">${esc(D.savingsNote)}</p></section>` : ''}
+<div class="fixes">${fixCards || `<p class="card">${esc(t.report.noFix)}</p>`}</div>
 
-${suggestions.length ? `<h2 class="section-title">Other suggestions</h2>
-<p class="note">Things only you can do: slash commands to type, habits, and changes to your own agents and skills.</p>
+${suggestions.length ? `<h2 class="section-title">${esc(D.otherTitle)}</h2>
+<p class="note">${esc(D.otherNote)}</p>
 <div class="suggestions">${suggestions.map(([title, xs]) => `<section class="card"><h3>${esc(title)}</h3><ul>${xs.map((x) => `<li>${rich(x)}</li>`).join('')}</ul></section>`).join('')}</div>` : ''}
 
-${sessions ? `<h2 class="section-title">Costliest sessions</h2>
-<section class="card scroll"><table><thead><tr><th>Project</th><th>Session</th><th>From</th><th>Spend</th><th>Requests</th><th>Avg context</th><th>Re-read</th></tr></thead><tbody>${sessions}</tbody></table><p class="muted" style="margin-top:8px">Main conversation only, not its subagents.</p></section>` : ''}
+${sessions ? `<h2 class="section-title">${esc(D.sessionsTitle)}</h2>
+<section class="card scroll"><table><thead><tr>${D.sessionsColumns.map((c) => `<th>${esc(c)}</th>`).join('')}</tr></thead><tbody>${sessions}</tbody></table><p class="muted" style="margin-top:8px">${esc(D.sessionsNote)}</p></section>` : ''}
 
-${history.length ? `<h2 class="section-title">Changes in effect</h2><p class="note">What limit-xray changed earlier and is still in place, newest first. <code>/limit-xray:analyze compare</code> measures it; <code>/limit-xray:analyze revert</code> undoes the newest.</p><section class="card">${history.join('')}</section>` : ''}
+${history.length ? `<h2 class="section-title">${esc(D.historyTitle)}</h2><p class="note">${rich(D.historyNote)}</p><section class="card">${history.join('')}</section>` : ''}
 
 <footer>
-<p><strong>Not counted</strong></p>
-<ul>${notCounted(r).map((x) => `<li>${rich(x)}</li>`).join('')}</ul>
-<p>Generated by limit-xray on ${esc(new Date(generatedAt).toLocaleString('en-US'))}. Everything stayed on this computer.</p>
+<p><strong>${esc(D.notCounted)}</strong></p>
+<ul>${notCounted(r, { lang }).map((x) => `<li>${rich(x)}</li>`).join('')}</ul>
+<p>${esc(D.generated({ when: loc.dateTime(generatedAt) }))}</p>
 </footer>
 </main>
 <div class="tip" role="tooltip" hidden></div>

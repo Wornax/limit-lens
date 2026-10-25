@@ -1,6 +1,7 @@
 // Compare usage before and after an experiment. Workload differs between periods, so the table leads
-// with per-day and per-request cost and with shares, not with totals.
-import { usd, pct, tokens, sumCost } from './format.mjs';
+// with per-day and per-request cost and with shares, not with totals. Texts come from the language catalogs.
+import { sumCost } from './format.mjs';
+import { locale } from './i18n/index.mjs';
 
 const MIN_ACTIVE_DAYS = 2;
 const MIN_REQUESTS = 200;
@@ -30,39 +31,42 @@ export function metrics(r) {
   };
 }
 
-const change = (before, after) => (before ? `${after >= before ? '+' : ''}${Math.round(((after - before) / before) * 100)}%` : 'n/a');
-const points = (before, after) => `${after >= before ? '+' : ''}${Math.round((after - before) * 100)} pts`;
-const share = (x) => pct(x, 1);
+const sign = (before, after) => (after >= before ? '+' : '');
 
-export function renderCompare(experiment, after) {
+export function renderCompare(experiment, after, { lang = 'en' } = {}) {
+  const { t, usd, pct, tokens, num, utc } = locale(lang);
+  const C = t.compare;
+  const change = (b, a) => (b ? `${sign(b, a)}${Math.round(((a - b) / b) * 100)}%` : C.na);
+  const points = (b, a) => C.points({ n: `${sign(b, a)}${Math.round((a - b) * 100)}` });
+  const share = (x) => pct(x, 1);
   const before = experiment.baseline;
-  const applied = experiment.appliedAt.slice(0, 16).replace('T', ' ');
   const fixes = experiment.changes.map((c) => `\`${c.fixId}\``).join(', ');
-  const lines = ['# limit-xray: before and after', '', `Experiment \`${experiment.id}\`, applied ${applied} UTC: ${fixes}.`];
-  if (experiment.revertedAt) lines.push(`It was reverted on ${experiment.revertedAt.slice(0, 16).replace('T', ' ')} UTC, so "after" mixes both settings.`);
+  const lines = [C.title, '', C.experiment({ id: experiment.id, when: utc(experiment.appliedAt), fixes })];
+  if (experiment.revertedAt) lines.push(C.reverted({ when: utc(experiment.revertedAt) }));
   lines.push('');
   if (after.activeDays < MIN_ACTIVE_DAYS || after.requests < MIN_REQUESTS) {
     lines.push(
-      `It is too early to compare: since the change there are ${after.activeDays} active day${after.activeDays === 1 ? '' : 's'} and ${after.requests.toLocaleString('en-US')} requests.`,
-      `Come back after at least ${MIN_ACTIVE_DAYS} active days and ${MIN_REQUESTS} requests of normal use. New settings apply to new sessions, so restart running ones.`,
+      C.tooEarly({ days: after.activeDays, requests: num(after.requests) }),
+      C.comeBack({ days: MIN_ACTIVE_DAYS, requests: MIN_REQUESTS }),
     );
     return lines.join('\n') + '\n';
   }
+  const row = (label, b, a, cell, delta) => `| ${label} | ${cell(b)} | ${cell(a)} | ${delta(b, a)} |`;
   lines.push(
-    `Before: the 7 days up to the change (${before.activeDays} active days, ${before.requests.toLocaleString('en-US')} requests). After: since the change (${after.activeDays} active days, ${after.requests.toLocaleString('en-US')} requests).`,
+    C.periods({ beforeDays: before.activeDays, beforeRequests: num(before.requests), afterDays: after.activeDays, afterRequests: num(after.requests) }),
     '',
-    '| Measure | Before | After | Change |',
+    C.header,
     '| :- | -: | -: | -: |',
-    `| Spend per active day | ${usd(before.spendPerActiveDay)} | ${usd(after.spendPerActiveDay)} | ${change(before.spendPerActiveDay, after.spendPerActiveDay)} |`,
-    `| Spend per request | ${usd(before.spendPerRequest)} | ${usd(after.spendPerRequest)} | ${change(before.spendPerRequest, after.spendPerRequest)} |`,
-    `| Opus share of spend | ${share(before.shares.opus)} | ${share(after.shares.opus)} | ${points(before.shares.opus, after.shares.opus)} |`,
-    `| xhigh and max effort share | ${share(before.shares.highEffort)} | ${share(after.shares.highEffort)} | ${points(before.shares.highEffort, after.shares.highEffort)} |`,
-    `| Agents share | ${share(before.shares.agents)} | ${share(after.shares.agents)} | ${points(before.shares.agents, after.shares.agents)} |`,
-    `| Re-reading share | ${share(before.shares.reread)} | ${share(after.shares.reread)} | ${points(before.shares.reread, after.shares.reread)} |`,
-    `| Automated turns share | ${share(before.shares.automated)} | ${share(after.shares.automated)} | ${points(before.shares.automated, after.shares.automated)} |`,
-    `| Average main-conversation context | ${tokens(before.avgMainContext)} | ${tokens(after.avgMainContext)} | ${change(before.avgMainContext, after.avgMainContext)} |`,
+    row(C.perDay, before.spendPerActiveDay, after.spendPerActiveDay, usd, change),
+    row(C.perRequest, before.spendPerRequest, after.spendPerRequest, usd, change),
+    row(C.opus, before.shares.opus, after.shares.opus, share, points),
+    row(C.highEffort, before.shares.highEffort, after.shares.highEffort, share, points),
+    row(C.agents, before.shares.agents, after.shares.agents, share, points),
+    row(C.reread, before.shares.reread, after.shares.reread, share, points),
+    row(C.automated, before.shares.automated, after.shares.automated, share, points),
+    row(C.context, before.avgMainContext, after.avgMainContext, tokens, change),
     '',
-    'Workload differs between the two periods: trust per-request cost and shares more than totals. Spend is API-equivalent at list prices; on a subscription it shows how the usage limit was spent.',
+    C.caveat,
   );
   return lines.join('\n') + '\n';
 }

@@ -1,6 +1,6 @@
 # limit-xray: living plan
 
-Status line: **v0.3 published: the repository is public (2026-10-25), installable with `claude plugin marketplace add Wornax/limit-xray` and `claude plugin install limit-xray@limit-xray`; commit emails rewritten to the GitHub noreply address before publishing. Next: share it with the community; the Anthropic directory needs an icon and a submission from the developer portal**.
+Status line: **v0.4: reports in English or Brazilian Portuguese, following `--lang` or Claude Code's `language` setting. The repository is public (2026-10-25), installable with `claude plugin marketplace add Wornax/limit-xray` and `claude plugin install limit-xray@limit-xray`, with real screenshots in the README and CI on Linux and Windows. Next: the Instagram video, then share it with the community; the Anthropic directory needs an icon and a submission from the developer portal**.
 
 ## Goal
 
@@ -137,6 +137,19 @@ Decisions:
 The author asked for the interactive flow to be tested without him. A real Claude Code session (Sonnet, his settings and plugins, the plugin loaded from the repo) was driven through the Python Agent SDK: `can_use_tool` answered every AskUserQuestion the way he would and approved only the plugin's own `apply` and `revert`. Both experiments were reverted through `/limit-xray:analyze revert` (once confirming in text, once through the question), then `/limit-xray:analyze` ran twice and re-applied the same changes, choosing to drop the per-turn security review rather than both alternatives. The final settings match the starting ones in effect.
 
 What it caught, fixed in the analyze skill: "Show details" re-asked the question without the details (they now go inside the repeated question), no summary before applying (now a last question lists every chosen change, Cancel first), option labels left in English in a Portuguese conversation (now in the user's language), and "opened in the browser" said when it had not (the skill now repeats the Summary's dashboard line).
+
+## Reports in the user's language (2026-10-25)
+
+Why: the author uses Claude Code in Portuguese and the report came out in English. Claude could not translate the bars without breaking their alignment, and the dashboard is read straight in the browser, so the script itself has to write in the user's language.
+
+Decisions:
+
+1. **Catalogs, not translation on the fly.** Every text lives in `scripts/lib/i18n/<lang>.mjs`. The code computes and formats each number; a text only places it (`p.name`). English is the source, and a missing text falls back to it. Numbers follow the language (US$ 1.234,56; "sáb 24/10").
+2. **Which language.** `--lang`, then `LIMIT_XRAY_LANG`, then Claude Code's `language` setting (a value starting with "pt" or naming Portuguese) from the project's local file, the project's shared file or the user's, then English. The skills add `--lang pt` when Claude is answering in Portuguese, so a user without the setting still gets Portuguese; the permission rules list those exact shapes.
+3. **What stays in English.** Setting names, values, commands and links, which are what the user types; and the routing line written to `CLAUDE.md`, an instruction for Claude that revert finds by its exact text, so a revert run in another language still removes it. Error messages about damaged files and `--help` stay in English too.
+4. **Guarded by tests.** `tests/lang.test.mjs` checks every catalog against English (same keys, same values, same code spans), then renders analyze, the plan, the report, compare, apply, revert and the dashboard in Portuguese on a week where every lens and fix fires, and fails on English words left in the prose. The English output was compared byte for byte with v0.3 on a real week: identical but for the dashboard footer's date. It also differs where v0.3 was wrong: "1 request in 1 session" in the singular, and the share column of the bars kept aligned once an amount reaches eight characters.
+
+Found on the way: the dashboard that `analyze` writes got the habits as bare texts (the plan's `habits` overrode the objects), so its Habits card showed empty items. Fixed, with a test.
 
 ## Next ideas (2026-10-25)
 

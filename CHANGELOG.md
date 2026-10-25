@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.4.0 (2026-10-25)
+
+- Reports in Brazilian Portuguese: the report, analyze, the plan, compare, apply and revert, the dashboard, and every finding and fix, with numbers written the Brazilian way (US$ 1.234,56) and days as "sáb 24/10". The language comes from `--lang en|pt`, then `LIMIT_XRAY_LANG`, then Claude Code's `language` setting, then English; the skills pass `--lang pt` when the conversation is in Portuguese. Setting names, values, commands and the routing line written to `CLAUDE.md` stay as they are.
+- Texts live in language catalogs (`scripts/lib/i18n/`). A missing text falls back to English, and a test checks every catalog against the English one: same keys, same values, same commands.
+- Fixed: the dashboard that `analyze` writes listed the habits as empty items.
+- The "At a glance" block keeps its share column aligned when amounts are long.
+- The dashboard footer prints the date as `2026-10-25 14:03`.
+
 ## 0.3.0 (2026-10-25)
 
 - Renamed from limit-lens to **limit-xray**: several similar projects already used "limit lens" (including the `limitlens` npm package for Claude and Codex quotas). Commands are now `/limit-xray:analyze` and `/limit-xray:report`, the state folder is `<config dir>/limit-xray/`, and the repository is `Wornax/limit-xray`.

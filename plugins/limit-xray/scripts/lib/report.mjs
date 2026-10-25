@@ -1,11 +1,13 @@
 // Render a report and its findings as compact Markdown. The output is injected into a
-// conversation, so every line has to earn its tokens.
-import { usd, pct, tokens, topEntries, modelName } from './format.mjs';
+// conversation, so every line has to earn its tokens. Texts come from the language catalogs (i18n/).
+import { topEntries, modelName } from './format.mjs';
 import { barBlock } from './charts.mjs';
+import { locale, lookup } from './i18n/index.mjs';
 
 const MAX_SHOWN = 6;
-const ENTRYPOINT_NAMES = Object.assign(Object.create(null), { cli: 'terminal', 'claude-desktop': 'desktop app', 'sdk-py': 'Python SDK', 'sdk-ts': 'TypeScript SDK' });
-const entrypointName = (k) => ENTRYPOINT_NAMES[k] || clean(k);
+// Entry point names come from disk; one the catalog does not name is cleaned.
+export const entrypointName = (t, k) => lookup(t.names.entrypoints, k, clean(k));
+export const kindLabel = (f, t) => (f.kind === 'cost-only' ? t.report.costOnly : t.report.changesWork);
 
 export const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
@@ -27,17 +29,8 @@ export function anonymizer(enabled, { shorten = false } = {}) {
 // Session ids are UUIDs; anything else is a file name, hidden under --anonymize.
 export const sessionLabel = (id, i, anonymize) => (UUID.test(id) || !anonymize ? clean(String(id).slice(0, 8)) : `session-${i + 1}`);
 
-const NOTES = {
-  'plugin-log-unscoped': 'The security-guidance log is not split by project, so its spend is left out of a `--project` report.',
-  'plugin-log-partial': 'The security-guidance log rotates at 1 MB and does not reach back to the start of this window, so some plugin spend is missing.',
-  'unreadable-transcript': 'Some transcript files could not be read and were skipped.',
-  'malformed-line': 'Some transcript lines had unexpected fields and were skipped.',
-};
+const show = (v, t) => (v === undefined || v === null ? t.names.notSet : `\`${JSON.stringify(v)}\``);
 
-const show = (v) => (v === undefined || v === null ? '(not set)' : `\`${JSON.stringify(v)}\``);
-
-const GROUP_TITLES = { 'security-turn-review': 'security-guidance: the review after every turn' };
-const CONTRIBUTOR_TITLES = { project: 'Biggest projects', 'agent type': 'Biggest agent types', session: 'Largest sessions', review: 'Reviews' };
 // Project, agent type and session names come from disk and are cleaned; review names are limit-xray's own.
 // Session contributors are "project/session"; a folder name cannot contain "/", so each part is cleaned.
 export const contributorName = (c) => (c.kind === 'review' ? c.name : String(c.name).split('/').map(clean).join('/'));
@@ -58,7 +51,8 @@ export function diagnosis(r, found) {
 }
 
 // Fixes grouped into questions: alternatives (same `group`) share one question.
-export function questions(fixes) {
+export function questions(fixes, { lang = 'en' } = {}) {
+  const groups = locale(lang).t.names.groups;
   const out = [];
   const byGroup = new Map();
   for (const f of fixes) {
@@ -66,167 +60,165 @@ export function questions(fixes) {
       byGroup.get(f.group).options.push(f);
       continue;
     }
-    const q = { group: f.group || null, title: f.group ? GROUP_TITLES[f.group] || f.title : f.title, what: f.what, options: [f] };
+    const q = { group: f.group || null, title: f.group ? lookup(groups, f.group, f.title) : f.title, what: f.what, options: [f] };
     if (f.group) byGroup.set(f.group, q);
     out.push(q);
   }
   return out;
 }
 
-function fixLines(f, indent) {
+function fixLines(f, indent, { t, usd }) {
+  const R = t.report;
   const pad = ' '.repeat(indent);
   const lines = [
-    `${pad}- ${f.kind === 'cost-only' ? 'Cost only' : 'Changes how Claude works for you'}: ${f.effect}`,
-    f.target === 'memory'
-      ? `${pad}- Change: add to \`${f.file}\`: "${f.rule}"`
-      : `${pad}- Change: \`${f.path.join('.')}\` ${show(f.current)} -> ${show(f.value)}`,
-    `${pad}- Why: ${f.why}`,
+    `${pad}- ${kindLabel(f, t)}: ${f.effect}`,
+    pad + (f.target === 'memory'
+      ? R.changeMemory({ file: f.file, rule: f.rule })
+      : R.changeSetting({ path: f.path.join('.'), from: show(f.current, t), to: show(f.value, t) })),
+    pad + R.why({ why: f.why }),
   ];
   const kinds = [...new Set((f.contributors || []).map((c) => c.kind))];
   for (const k of kinds) {
     const items = f.contributors.filter((c) => c.kind === k).map((c) => `${contributorName(c)} (${usd(c.cost)}${c.detail ? `, ${c.detail}` : ''})`);
-    lines.push(`${pad}- ${CONTRIBUTOR_TITLES[k] || k}: ${items.join('; ')}`);
+    lines.push(`${pad}- ${lookup(t.names.contributors, k)}: ${items.join('; ')}`);
   }
   lines.push(
-    f.savings?.weekly == null
-      ? `${pad}- Estimated savings: ${f.savings?.basis || 'not estimated.'}`
-      : `${pad}- Estimated savings: about ${usd(f.savings.weekly)} per week (API-equivalent). How: ${f.savings.basis}`,
-    `${pad}- Source: ${f.docs}`,
+    pad + (f.savings?.weekly == null ? R.savingNone({ basis: f.savings?.basis }) : R.saving({ cost: usd(f.savings.weekly), basis: f.savings.basis })),
+    pad + R.source({ docs: f.docs }),
   );
   return lines;
 }
 
-function diagnosisLines(report, found) {
-  const lines = [];
+function diagnosisLines(report, found, { t, usd, pct }) {
+  const R = t.report;
   const d = diagnosis(report, found);
-  lines.push(
-      '## What is eating your limit',
-      '',
-      `API-equivalent spend ${usd(d.spend)} in the last ${d.days} days${d.outside ? `, plus ${usd(d.outside)} of plugin calls outside transcripts` : ''} (list prices; on a subscription, read dollars as a share of your limit).`,
-      '',
-    );
-    for (const l of d.lenses) lines.push(`- ${l.title}: ${pct(l.cost, d.spend)} (${usd(l.cost)})`);
-    if (d.projects.length) lines.push(`- Biggest projects: ${d.projects.map((p) => `${p.name} ${pct(p.cost, d.spend)}`).join(', ')}`);
-  if (d.lenses.length > 1) lines.push('', 'These overlap: one request can count under several headings.');
+  const lines = [R.eating, '', R.diagnosisSpend({ cost: usd(d.spend), days: d.days, outside: d.outside ? usd(d.outside) : '' }), ''];
+  for (const l of d.lenses) lines.push(`- ${l.title}: ${pct(l.cost, d.spend)} (${usd(l.cost)})`);
+  if (d.projects.length) lines.push(R.biggestProjectsPlain({ list: d.projects.map((p) => `${p.name} ${pct(p.cost, d.spend)}`).join(', ') }));
+  if (d.lenses.length > 1) lines.push('', R.overlap);
   lines.push('');
   return lines;
 }
 
-function questionLines(fixes, settingsFile) {
-  const lines = [`Settings file: \`${settingsFile}\` (backed up before any change; new settings apply to new sessions).`, ''];
-  if (!fixes.length) lines.push('No fix applies right now: either nothing crossed its threshold, or your settings already have these values.', '');
-  questions(fixes).forEach((q, i) => {
-    lines.push(`### Question ${i + 1}: ${q.title}`, '');
-    if (q.what) lines.push(`- What it is: ${q.what}`);
+function questionLines(fixes, settingsFile, loc) {
+  const R = loc.t.report;
+  const lines = [R.settingsFile({ file: settingsFile }), ''];
+  if (!fixes.length) lines.push(R.noFix, '');
+  questions(fixes, { lang: loc.lang }).forEach((q, i) => {
+    lines.push(R.question({ n: i + 1, title: q.title }), '');
+    if (q.what) lines.push(R.what({ what: q.what }));
     if (q.options.length === 1) {
-      lines.push(...fixLines(q.options[0], 0), `Options: \`${q.options[0].id}\``, '');
+      lines.push(...fixLines(q.options[0], 0, loc), R.options({ ids: `\`${q.options[0].id}\`` }), '');
     } else {
-      for (const f of q.options) lines.push(`- \`${f.id}\`: ${f.title}`, ...fixLines(f, 2));
-      lines.push(`Options: ${q.options.map((f) => `\`${f.id}\``).join(' or ')} (alternatives: choose at most one)`, '');
+      for (const f of q.options) lines.push(`- \`${f.id}\`: ${f.title}`, ...fixLines(f, 2, loc));
+      lines.push(R.alternatives({ ids: q.options.map((f) => `\`${f.id}\``).join(R.or) }), '');
     }
   });
-  if (fixes.filter((f) => f.savings?.weekly != null).length > 1) {
-    lines.push('Each estimate assumes that fix alone; fixes can save on the same requests, so the estimates do not add up.', '');
-  }
+  if (fixes.filter((f) => f.savings?.weekly != null).length > 1) lines.push(R.notAdditive, '');
   return lines;
 }
 
 // One applied change, in a line.
-export const describeChange = (c) => (c.kind === 'memory' ? 'the model-routing rule in `CLAUDE.md`' : `\`${c.path.join('.')}\` = \`${JSON.stringify(c.after)}\``);
+export const describeChange = (c, lang = 'en') => (c.kind === 'memory' ? locale(lang).t.report.routingRule : `\`${c.path.join('.')}\` = \`${JSON.stringify(c.after)}\``);
 
 const changesInEffect = (active) => active.reduce((s, e) => s + e.changes.length, 0);
 
-function historyLines({ active = [], last, undo, warning }) {
+function historyLines({ active = [], last, undo, warning }, { t, lang, utc }) {
+  const R = t.report;
   const lines = [];
   if (active.length) {
-    lines.push('', '## Changes in effect', '');
-    for (const e of active) lines.push(`- \`${e.id}\`, applied ${e.appliedAt.slice(0, 16).replace('T', ' ')} UTC: ${e.changes.map(describeChange).join('; ')}.`);
-    lines.push('', 'Compare them after a few days of normal use with `/limit-xray:analyze compare`.');
+    lines.push('', R.inEffectTitle, '');
+    for (const e of active) lines.push(R.applied({ id: e.id, when: utc(e.appliedAt), changes: e.changes.map((c) => describeChange(c, lang)).join('; ') }));
+    lines.push('', R.compareThem);
   } else if (last) {
-    const fixesList = last.changes.map((c) => `\`${c.fixId}\``).join(', ');
-    lines.push('', '## Last experiment', '', `- \`${last.id}\`, applied ${last.appliedAt.slice(0, 16).replace('T', ' ')} UTC: ${fixesList}${last.revertedAt ? ' (reverted)' : ''}. Compare it after a few days of normal use.`);
+    lines.push('', R.lastTitle, '', R.last({ id: last.id, when: utc(last.appliedAt), fixes: last.changes.map((c) => `\`${c.fixId}\``).join(', '), reverted: Boolean(last.revertedAt) }));
   }
   if (undo) {
-    lines.push('', `## Revert would restore (experiment \`${undo.id}\`)`, '');
+    lines.push('', R.undoTitle({ id: undo.id }), '');
     for (const c of undo.changes) {
-      lines.push(c.kind === 'memory' ? `- \`${c.file}\`: the model-routing rule is removed` : `- \`${c.path.join('.')}\` -> ${c.hadKey ? show(c.restore) : '(removed)'}`);
+      lines.push(c.kind === 'memory' ? R.undoMemory({ file: c.file }) : R.undoSetting({ path: c.path.join('.'), to: c.hadKey ? show(c.restore, t) : R.removed }));
     }
-    lines.push('', `To undo exactly this, run revert with \`--experiment ${undo.id}\`.`);
+    lines.push('', R.undoHow({ id: undo.id }));
   }
-  if (warning) lines.push('', `Warning: ${warning}`);
+  if (warning) lines.push('', R.warning({ warning }));
   return lines;
 }
 
 // The fix plan: the diagnosis first, then one question per fix or per group of alternatives.
-export function renderPlan({ report, found = [], fixes, habits, settingsFile, last, undo, active = [], warning }) {
-  const lines = ['# limit-xray: fixes you can apply', ''];
-  if (report) lines.push(...diagnosisLines(report, found));
-  lines.push(...questionLines(fixes, settingsFile));
-  if (habits.length) lines.push('', '## Habits (only the user can do these)', '', ...habits.map((h) => `- ${h}`));
-  lines.push(...historyLines({ active, last, undo, warning }));
+export function renderPlan({ report, found = [], fixes, habits, settingsFile, last, undo, active = [], warning, lang = 'en' }) {
+  const loc = locale(lang);
+  const R = loc.t.report;
+  const lines = [R.planTitle, ''];
+  if (report) lines.push(...diagnosisLines(report, found, loc));
+  lines.push(...questionLines(fixes, settingsFile, loc));
+  if (habits.length) lines.push('', R.habits, '', ...habits.map((h) => `- ${h}`));
+  lines.push(...historyLines({ active, last, undo, warning }, loc));
   return lines.join('\n') + '\n';
 }
 
-// A finding's suggestion that a question already asks, by the fix that asks it (id prefix).
+// A finding's suggestion that a question already asks: the fix that asks it (id prefix) and the
+// suggestion's text in the findings catalog.
 const ASKED = [
-  ['subagent-model-sonnet', /"CLAUDE_CODE_SUBAGENT_MODEL": "sonnet"/],
-  ['effort-high-', /^Use `\/effort high`/],
-  ['autocompact-300k', /"autoCompactWindow": 300000/],
-  ['default-model-sonnet', /^Start routine sessions with `\/model sonnet`/],
-  ['model-routing-rule', /^Let Claude pick a model per task/],
-  ['security-', /SECURITY_REVIEW_MODEL=/],
-  ['fast-mode-off', /turn it off with `\/fast`/],
-  ['cross-session-hold', /"crossSessionInbound": "hold"/],
+  ['subagent-model-sonnet', (F) => F.agents.sonnet],
+  ['effort-high-', (F) => F.effort.high],
+  ['autocompact-300k', (F) => F.reread.autocompact],
+  ['default-model-sonnet', (F) => F.models.sonnet],
+  ['model-routing-rule', (F) => F.models.routing],
+  ['security-', (F) => F.plugins.securityGuidance],
+  ['fast-mode-off', (F) => F.fast.off],
+  ['cross-session-hold', (F) => F.automation.hold],
 ];
 
 // The findings' suggestions no question covers, grouped by finding, then the habits whose finding is not
-// shown (a shown finding already carries the same advice).
-export function otherSuggestions(found, fixes, habits) {
-  const asked = (text) => ASKED.some(([id, re]) => re.test(text) && fixes.some((f) => f.id.startsWith(id)));
+// shown (a shown finding already carries the same advice). Findings and fixes must be in `lang`.
+export function otherSuggestions(found, fixes, habits, { lang = 'en' } = {}) {
+  const { t } = locale(lang);
+  const asked = (text) => ASKED.some(([id, pick]) => text === pick(t.findings) && fixes.some((f) => f.id.startsWith(id)));
   const shown = found.slice(0, MAX_SHOWN);
   const groups = shown.map((f) => [f.title, f.fixes.filter((x) => !asked(x))]).filter(([, xs]) => xs.length);
   const rest = habits.filter((h) => !shown.some((f) => f.id === h.finding)).map((h) => h.text);
-  if (rest.length) groups.push(['Habits', rest]);
+  if (rest.length) groups.push([t.report.habitsGroup, rest]);
   return groups;
 }
 
-function suggestionLines(found, fixes, habits) {
-  const groups = otherSuggestions(found, fixes, habits);
+function suggestionLines(found, fixes, habits, loc) {
+  const groups = otherSuggestions(found, fixes, habits, { lang: loc.lang });
   if (!groups.length) return [];
-  const lines = ['## Other suggestions', '', 'Things only the user can do: slash commands to type, habits, and changes to their own agents and skills.', ''];
+  const R = loc.t.report;
+  const lines = [R.other, '', R.otherNote, ''];
   for (const [title, xs] of groups) lines.push(`**${title}**`, ...xs.map((x) => `- ${x}`), '');
   return lines;
 }
 
 // What analyze found and what happens next, before the details.
-function summaryLines(r, found, fixes, dashboard, active = []) {
+function summaryLines(r, found, fixes, dashboard, active, loc) {
+  const { t, usd, pct } = loc;
+  const R = t.report;
   const total = r.totals.cost;
-  const lines = ['## Summary', ''];
-  if (found.length) lines.push(`- **What eats your limit:** ${found.slice(0, 3).map((f) => `${f.title} (${pct(f.cost, total)})`).join(', ')}. These overlap.`);
+  const lines = [R.summary, ''];
+  if (found.length) lines.push(R.eats({ list: found.slice(0, 3).map((f) => `${f.title} (${pct(f.cost, total)})`).join(', ') }));
   const projects = topProjects(r, 3);
-  if (projects.length) lines.push(`- **Biggest projects:** ${projects.map(([p, b]) => `${clean(p)} ${pct(b.cost, total)}`).join(', ')}`);
-  const qs = questions(fixes);
-  if (qs.length) {
-    const first = qs[0].options[0].id === 'model-routing-rule' ? ', model routing first' : '';
-    lines.push(`- **What happens next:** Claude asks ${qs.length} question${qs.length === 1 ? '' : 's'}, one per fix below${first}. Nothing changes until you choose; each change is backed up, and \`/limit-xray:analyze revert\` undoes it.`);
-  } else {
-    lines.push('- **What happens next:** no fix applies right now, so nothing is asked; the other suggestions below are yours to try.');
-  }
+  if (projects.length) lines.push(R.biggestProjects({ list: projects.map(([p, b]) => `${clean(p)} ${pct(b.cost, total)}`).join(', ') }));
+  const qs = questions(fixes, { lang: loc.lang });
+  if (qs.length) lines.push(R.next({ n: qs.length, first: qs[0].options[0].id === 'model-routing-rule' ? R.routingFirst : '' }));
+  else lines.push(R.nextNone);
   const inEffect = changesInEffect(active);
-  if (inEffect) lines.push(`- **Already in effect:** ${inEffect} change${inEffect === 1 ? '' : 's'} from earlier runs ${inEffect === 1 ? 'is' : 'are'} in effect, listed under "Changes in effect".`);
+  if (inEffect) lines.push(R.inEffect({ n: inEffect }));
   const best = fixes.filter((f) => f.savings?.weekly != null).sort((a, b) => b.savings.weekly - a.savings.weekly)[0];
-  if (best) lines.push(`- **Largest estimated saving:** about ${usd(best.savings.weekly)} per week, from "${best.title}" (each fix alone; the estimates do not add up).`);
-  if (dashboard) lines.push(`- **Dashboard:** \`${dashboard.file}\`, with charts of everything below${dashboard.opened ? ', opened in your browser' : ''}.`);
+  if (best) lines.push(R.best({ cost: usd(best.savings.weekly), title: best.title }));
+  if (dashboard) lines.push(R.dashboard({ file: dashboard.file, opened: Boolean(dashboard.opened) }));
   lines.push('');
   return lines;
 }
 
 // `limit-xray analyze`: a summary, the report, the questions (the routing rule first), the suggestions no
 // question covers, and the history of applied changes.
-export function renderAnalyze({ report, found, fixes, habits = [], settingsFile, last, undo, active = [], warning, searched = [], dashboard = null }) {
-  const head = renderMarkdown(report, found, { searched, withFixes: false, summary: report.totals.requests ? summaryLines(report, found, fixes, dashboard, active) : [] });
+export function renderAnalyze({ report, found, fixes, habits = [], settingsFile, last, undo, active = [], warning, searched = [], dashboard = null, lang = 'en' }) {
+  const loc = locale(lang);
+  const summary = report.totals.requests ? summaryLines(report, found, fixes, dashboard, active, loc) : [];
+  const head = renderMarkdown(report, found, { searched, withFixes: false, summary, lang });
   if (!report.totals.requests) return head;
-  const lines = ['', '## Questions', '', ...questionLines(fixes, settingsFile), ...suggestionLines(found, fixes, habits), ...historyLines({ active, last, undo, warning })];
+  const lines = ['', loc.t.report.questions, '', ...questionLines(fixes, settingsFile, loc), ...suggestionLines(found, fixes, habits, loc), ...historyLines({ active, last, undo, warning }, loc)];
   return head + lines.join('\n') + '\n';
 }
 
@@ -239,61 +231,58 @@ export function windowDays(r) {
   return out;
 }
 
-// "Sat 10-24" for 2026-10-24.
-export const dayLabel = (key) => {
-  const [y, m, d] = key.split('-').map(Number);
-  return `${new Date(y, m - 1, d).toLocaleDateString('en-US', { weekday: 'short' })} ${key.slice(5)}`;
-};
-
 const EFFORT_ORDER = ['max', 'xhigh', 'high', 'medium', 'low'];
 
 export const topProjects = (r, n) => Object.entries(r.byProject || {}).filter(([, b]) => b.cost > 0).sort((a, b) => b[1].cost - a[1].cost).slice(0, n);
 
 // The numbers behind the bars, shared by the Markdown and the dashboard. `name` maps a project folder name.
-export function glanceData(r, { name = (p) => p, projects = 3 } = {}) {
+export function glanceData(r, { name = (p) => p, projects = 3, lang = 'en' } = {}) {
+  const { t, pct, dayLabel } = locale(lang);
+  const G = t.glance;
   const c = r.components;
   const total = r.totals.cost;
   const top = (map, n) => Object.entries(map || {}).filter(([, b]) => b.cost > 0).sort((a, b) => b[1].cost - a[1].cost).slice(0, n);
   const effort = Object.entries(r.byEffort || {}).filter(([, b]) => b.cost > 0)
     .sort(([a], [b]) => (EFFORT_ORDER.indexOf(a) + 1 || 99) - (EFFORT_ORDER.indexOf(b) + 1 || 99));
   return [
-    { id: 'days', title: 'Spend by day', rows: windowDays(r).map((k) => ({ key: k, label: dayLabel(k), cost: r.byDay?.[k]?.cost || 0, requests: r.byDay?.[k]?.requests || 0 })) },
+    { id: 'days', title: G.days, rows: windowDays(r).map((k) => ({ key: k, label: dayLabel(k), cost: r.byDay?.[k]?.cost || 0, requests: r.byDay?.[k]?.requests || 0 })) },
     {
       id: 'where',
-      title: 'Where it goes',
+      title: G.where,
       rows: [
-        { label: 'Re-reading context', cost: c.cacheRead },
-        { label: 'Writing to the cache', cost: c.cacheWrite5m + c.cacheWrite1h },
-        { label: `Output (thinking ${pct(c.thinking, total)})`, cost: c.output },
-        { label: 'Uncached input', cost: c.input },
+        { label: G.cacheRead, cost: c.cacheRead },
+        { label: G.cacheWrite, cost: c.cacheWrite5m + c.cacheWrite1h },
+        { label: G.output({ share: pct(c.thinking, total) }), cost: c.output },
+        { label: G.input, cost: c.input },
       ],
     },
-    { id: 'models', title: 'By model', rows: top(r.byModel, 4).map(([k, b]) => ({ label: modelName(k), cost: b.cost })) },
+    { id: 'models', title: G.models, rows: top(r.byModel, 4).map(([k, b]) => ({ label: modelName(k), cost: b.cost })) },
     {
       id: 'source',
-      title: 'By source',
+      title: G.source,
       rows: [
-        { label: 'You (main conversation)', cost: r.turns.human.cost },
-        { label: 'Automated turns', cost: r.turns.automated.cost },
-        { label: 'Subagents', cost: r.agents.subagent.cost },
-        { label: 'Workflow agents', cost: r.agents.workflow.cost },
+        { label: G.human, cost: r.turns.human.cost },
+        { label: G.automated, cost: r.turns.automated.cost },
+        { label: G.subagents, cost: r.agents.subagent.cost },
+        { label: G.workflow, cost: r.agents.workflow.cost },
       ].filter((x) => x.cost > 0),
     },
-    { id: 'effort', title: 'By effort', rows: effort.map(([k, b]) => ({ label: clean(k), cost: b.cost })) },
-    { id: 'projects', title: 'Biggest projects', rows: topProjects(r, projects).map(([p, b]) => ({ label: clean(name(p)), cost: b.cost })) },
+    { id: 'effort', title: G.effort, rows: effort.map(([k, b]) => ({ label: clean(k), cost: b.cost })) },
+    { id: 'projects', title: G.projects, rows: topProjects(r, projects).map(([p, b]) => ({ label: clean(name(p)), cost: b.cost })) },
   ];
 }
 
 // The glance as text bars. Days scale to the busiest day; everything else to the total.
-function glanceLines(sections, total) {
+function glanceLines(sections, total, { usd, pct }) {
   const lines = ['```text'];
   const pad = Math.min(28, Math.max(...sections.flatMap((s) => s.rows.map((x) => String(x.label).length)))); // one bar column for every block
+  const money = Math.max(7, ...sections.flatMap((s) => s.rows.map((x) => usd(x.cost).length))); // one width, so the shares line up too
   for (const s of sections) {
     if (!s.rows.length || (s.id === 'days' && s.rows.length > 10)) continue;
     const max = Math.max(...s.rows.map((x) => x.cost));
     const rows = s.rows.map((x) => (s.id === 'days'
       ? { label: x.label, fraction: max ? x.cost / max : 0, value: usd(x.cost) }
-      : { label: x.label, fraction: total ? x.cost / total : 0, value: `${pct(x.cost, total).padStart(4)}  ${usd(x.cost).padStart(7)}` }));
+      : { label: x.label, fraction: total ? x.cost / total : 0, value: `${pct(x.cost, total).padStart(4)}  ${usd(x.cost).padStart(money)}` }));
     lines.push(s.title, ...barBlock(rows, { pad }), '');
   }
   if (lines[lines.length - 1] === '') lines.pop();
@@ -301,94 +290,91 @@ function glanceLines(sections, total) {
   return lines;
 }
 
+const NOTE_CODES = new Set(['plugin-log-unscoped', 'plugin-log-partial', 'unreadable-transcript', 'malformed-line']);
+
 // What the report cannot see.
-export function notCounted(r) {
-  const total = r.totals.cost;
-  const items = [
-    'Usage from other computers, claude.ai chat and Cowork (they share your plan limits).',
-    'Plugins and scripts that call the API without leaving a log limit-xray can read.',
-  ];
-  if (r.totals.estimatedCost > 0) items.push(`${pct(r.totals.estimatedCost, total)} of spend is on models missing from the price table, priced at the closest known model and marked with \`~\`.`);
+export function notCounted(r, { lang = 'en' } = {}) {
+  const { t, pct, date } = locale(lang);
+  const N = t.notCounted;
+  const items = [N.elsewhere, N.noLog];
+  if (r.totals.estimatedCost > 0) items.push(N.estimated({ share: pct(r.totals.estimatedCost, r.totals.cost) }));
   for (const n of r.notes || []) {
-    if (n === 'history-shorter-than-window') items.push(historyNote(r));
-    else if (NOTES[n]) items.push(NOTES[n]);
+    if (n === 'history-shorter-than-window') items.push(N.history({ since: r.window.oldestData ? date(r.window.oldestData) : N.historyLater }));
+    else if (NOTE_CODES.has(n)) items.push(N.notes[n]);
   }
   return items;
 }
 
-function historyNote(r) {
-  const since = r.window.oldestData ? r.window.oldestData.slice(0, 10) : 'later';
-  return `Your transcripts on this computer start on ${since}. Claude Code deletes transcripts after \`cleanupPeriodDays\` (30 days by default), so a window longer than that cannot be filled; raise it in settings.json to keep more history.`;
-}
-
-export function renderMarkdown(r, found, { anonymize = false, searched = [], withFixes = true, summary = [] } = {}) {
+export function renderMarkdown(r, found, { anonymize = false, searched = [], withFixes = true, summary = [], lang = 'en' } = {}) {
+  const loc = locale(lang);
+  const { t, usd, pct, tokens, num, date } = loc;
+  const R = t.report;
   const name = anonymizer(anonymize, { shorten: true });
   const total = r.totals.cost;
-  const lines = [`# limit-xray: last ${r.window.days} day${r.window.days === 1 ? '' : 's'}`, ''];
+  const lines = [R.title({ days: r.window.days }), ''];
   // The filter text is usually part of a real folder name, so --anonymize hides it too.
-  const filterText = r.filter ? (anonymize ? 'the filter text (hidden by `--anonymize`)' : `\`${clean(r.filter.project)}\``) : null;
-  if (filterText) lines.push(`Only projects whose folder name contains ${filterText}.`, '');
+  const filterText = r.filter ? (anonymize ? R.filterHidden : `\`${clean(r.filter.project)}\``) : null;
+  if (filterText) lines.push(R.onlyProjects({ filter: filterText }), '');
 
   if (!r.totals.requests) {
     if (r.filter && !r.filter.matchingFolders) {
-      lines.push(`No project folder name contains ${filterText}. Folder names are encoded paths (for example \`C--Users-me-repo\` or \`-home-me-repo\`): try a shorter part of the repository name.`);
+      lines.push(R.noFolder({ filter: filterText }));
       return lines.join('\n') + '\n';
     }
-    lines.push(r.filter ? 'No Claude Code usage found in this window for the matching projects.' : 'No Claude Code usage found in this window.');
-    if (searched.length && anonymize) lines.push('', 'Looked in the Claude config folders (paths hidden by `--anonymize`).');
+    lines.push(r.filter ? R.noUsageFiltered : R.noUsage);
+    if (searched.length && anonymize) lines.push('', R.lookedHidden);
     else if (searched.length) {
       // JSON.stringify escapes newlines and control characters, so a path cannot leave its code span.
-      lines.push('', 'Looked in:', ...searched.map((d) => `- \`${JSON.stringify(String(d)).slice(0, 200).replace(/`/g, '')}\``));
+      lines.push('', R.lookedIn, ...searched.map((d) => `- \`${JSON.stringify(String(d)).slice(0, 200).replace(/`/g, '')}\``));
     }
-    lines.push('', 'Try a longer window (`--days 30`) or point at another folder (`--config-dir`).');
+    lines.push('', R.tryLonger);
     return lines.join('\n') + '\n';
   }
 
   lines.push(
-    `API-equivalent spend **${usd(total)}** over ${r.totals.requests.toLocaleString('en-US')} requests in ${r.totals.sessions.toLocaleString('en-US')} sessions (list prices as of ${r.pricesAsOf}).`,
-    'On a subscription this is not a bill: it shows how your usage limit was spent. Lenses overlap, so shares do not add up to 100%.',
+    R.spend({ cost: usd(total), requests: num(r.totals.requests), sessions: num(r.totals.sessions), asOf: date(r.pricesAsOf) }),
+    R.notABill,
     '',
     ...summary,
-    '## At a glance',
+    R.atAGlance,
     '',
-    ...glanceLines(glanceData(r, { name }), total),
+    ...glanceLines(glanceData(r, { name, lang }), total, loc),
     '',
-    `- **Started from:** ${topEntries(r.byEntrypoint, total, 4, entrypointName)}`,
+    R.startedFrom({ list: topEntries(r.byEntrypoint, total, 4, (k) => entrypointName(t, k), pct) }),
   );
-  if (r.outside.cost) lines.push(`- **Plugin calls outside transcripts:** ${usd(r.outside.cost)} (not in the total above)`);
+  if (r.outside.cost) lines.push(R.outside({ cost: usd(r.outside.cost) }));
   lines.push('');
 
   const heading = (f) => {
     const inside = f.cost ? `${pct(f.cost, total)}, ${usd(f.cost)}` : '';
-    const outside = f.outsideCost ? `${usd(f.outsideCost)} outside the total` : '';
-    return [inside, outside].filter(Boolean).join(', plus ');
+    const outside = f.outsideCost ? R.outsideTotal({ cost: usd(f.outsideCost) }) : '';
+    return [inside, outside].filter(Boolean).join(R.plus);
   };
-  lines.push('## Findings', '');
-  if (!found.length) lines.push('Nothing stands out: no lens crossed its threshold.', '');
+  lines.push(R.findings, '');
+  if (!found.length) lines.push(R.nothing, '');
   found.slice(0, MAX_SHOWN).forEach((f, i) => {
     lines.push(`### ${i + 1}. ${f.title} (${heading(f)})`, '');
     for (const e of f.evidence) lines.push(`- ${e}`);
     if (withFixes && f.fixes.length) {
-      lines.push('', 'Fixes:');
+      lines.push('', R.fixes);
       f.fixes.forEach((x, j) => lines.push(`${j + 1}. ${x}`));
     }
-    lines.push(`Docs: ${f.docs.join(' · ')}`, '');
+    lines.push(`${R.docs} ${f.docs.join(' · ')}`, '');
   });
   if (found.length > MAX_SHOWN) {
-    const rest = found.slice(MAX_SHOWN).map((f) => `${f.title} (${heading(f)})`).join('; ');
-    lines.push(`Also above its threshold: ${rest}.`, '');
+    lines.push(R.alsoAbove({ list: found.slice(MAX_SHOWN).map((f) => `${f.title} (${heading(f)})`).join('; ') }), '');
   }
 
   if (r.topSessions.length) {
-    lines.push('## Costliest sessions', '', '| Project | Session | From | Spend | Requests | Avg context | Re-read |', '| :- | :- | :- | -: | -: | -: | -: |');
+    lines.push(R.sessions, '', R.sessionsHeader, '| :- | :- | :- | -: | -: | -: | -: |');
     r.topSessions.forEach((s, i) => {
       lines.push(
-        `| ${clean(name(s.project))} | ${sessionLabel(s.sessionId, i, anonymize)} | ${entrypointName(s.entrypoint)} | ${usd(s.cost)} | ${s.requests.toLocaleString('en-US')} | ${tokens(s.avgPromptTokens)} | ${pct(s.rereadCost, s.cost)} |`,
+        `| ${clean(name(s.project))} | ${sessionLabel(s.sessionId, i, anonymize)} | ${entrypointName(t, s.entrypoint)} | ${usd(s.cost)} | ${num(s.requests)} | ${tokens(s.avgPromptTokens)} | ${pct(s.rereadCost, s.cost)} |`,
       );
     });
-    lines.push('', 'Spend per session counts its main conversation only, not its subagents.', '');
+    lines.push('', R.sessionsNote, '');
   }
 
-  lines.push('## Not counted', '', ...notCounted(r).map((x) => `- ${x}`));
+  lines.push(R.notCounted, '', ...notCounted(r, { lang }).map((x) => `- ${x}`));
   return lines.join('\n') + '\n';
 }

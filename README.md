@@ -5,8 +5,9 @@
 <p>
   <a href="https://github.com/Wornax/limit-xray/actions/workflows/test.yml"><img alt="Tests" src="https://github.com/Wornax/limit-xray/actions/workflows/test.yml/badge.svg"></a>
   <a href="LICENSE"><img alt="License: MIT" src="https://img.shields.io/badge/license-MIT-3987e5"></a>
-  <img alt="Version 0.3.0" src="https://img.shields.io/badge/version-0.3.0-3987e5">
+  <img alt="Version 0.4.0" src="https://img.shields.io/badge/version-0.4.0-3987e5">
   <img alt="Claude Code plugin" src="https://img.shields.io/badge/Claude_Code-plugin-d97757">
+  <img alt="English and Brazilian Portuguese" src="https://img.shields.io/badge/languages-en_%7C_pt--BR-3987e5">
   <img alt="Node 18 or later" src="https://img.shields.io/badge/node-%E2%89%A518-199e70">
   <img alt="Zero dependencies" src="https://img.shields.io/badge/dependencies-0-199e70">
   <img alt="Runs locally" src="https://img.shields.io/badge/network-none-52514e">
@@ -33,6 +34,7 @@ You keep hitting your Claude Code limit and nothing tells you why. limit-xray re
 | 🧭 **Model routing** | A guide that has Claude pick Haiku, Sonnet or Opus, and the effort, for every agent it starts |
 | 🛠️ **One-command fixes** | Each fix says what it is, what it changes and what it should save; you choose, the script applies with a backup |
 | ↩️ **Measure and undo** | Compare before and after a few days later; revert puts back exactly what it changed |
+| 🌎 **Your language** | Charts, dashboard and every fix in English or Brazilian Portuguese, following Claude Code's `language` setting |
 
 ## What you get
 
@@ -126,6 +128,8 @@ What it can change: the routing block in `CLAUDE.md`; in `settings.json`, `env.C
 
 Claude runs `/limit-xray:analyze` on its own when you ask why you keep hitting your limit; `/limit-xray:report` runs only when you type it. Run either in a fresh session: the analysis adds a few thousand tokens of context.
 
+**Language.** Reports, charts, the dashboard and the fix texts come in English or Brazilian Portuguese. The script follows Claude Code's `language` setting, from the project's settings or your own (`"language": "portuguese"` or `"pt"` gives Portuguese), and Claude passes `--lang pt` when you talk to it in Portuguese. Setting names and commands stay as they are in every language, and so does the routing line written to `CLAUDE.md`, which is an instruction for Claude.
+
 <details>
 <summary>Run the script directly, outside Claude Code</summary>
 
@@ -135,9 +139,10 @@ node plugins/limit-xray/scripts/limit-xray.mjs --json > usage.json
 node plugins/limit-xray/scripts/limit-xray.mjs analyze --open
 node plugins/limit-xray/scripts/limit-xray.mjs apply model-routing-rule subagent-model-sonnet
 node plugins/limit-xray/scripts/limit-xray.mjs compare
+node plugins/limit-xray/scripts/limit-xray.mjs analyze --lang pt
 ```
 
-`LIMIT_XRAY_NO_OPEN=1` keeps `analyze --open` from opening the browser.
+`LIMIT_XRAY_NO_OPEN=1` keeps `analyze --open` from opening the browser. `--lang en|pt` picks the language; `LIMIT_XRAY_LANG` does the same for every run, and both win over the `language` setting.
 </details>
 
 ## What it measures
@@ -184,6 +189,7 @@ Lenses overlap: a subagent's cache reads count under both "Re-reading context" a
 
 - **A plugin that calls the model?** Add its log reader under `plugins/limit-xray/scripts/lib/plugins/`, or its first-prompt signature to `signatures.mjs`, with a test.
 - **Prices changed?** Update `PRICES` and `PRICES_AS_OF` in `pricing.mjs`; the tests carry worked examples from the pricing page.
+- **Another language?** Copy `plugins/limit-xray/scripts/lib/i18n/en.mjs`, translate every text keeping its values (`p.name`) and code spans, then in `i18n/index.mjs` import it into `CATALOGS` and give `langOf` a rule for its names. `tests/lang.test.mjs` checks that nothing is missing and no command changed.
 - Run the tests with `npm test`. Tests use synthetic transcripts only: never commit real ones.
 
 ## License

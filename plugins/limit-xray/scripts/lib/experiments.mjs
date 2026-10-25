@@ -8,6 +8,7 @@ import { applicableFixes, routingFix } from './fixes.mjs';
 import { metrics } from './compare.mjs';
 import { readSettings, writeSettings, writeFileSafely, getPath, setPath, deletePath } from './settings.mjs';
 import { memoryPath, readMemory, hasRouting, addRouting, removeRouting, ROUTING_RULE } from './memory.mjs';
+import { locale } from './i18n/index.mjs';
 
 export const stateDir = (configDir) => path.join(configDir, 'limit-xray');
 const stateFile = (configDir) => path.join(stateDir(configDir), 'experiments.json');
@@ -75,12 +76,12 @@ export function planHistory(configDir) {
 
 // The fixes that apply now, given the report, the current settings file and CLAUDE.md: the routing rule
 // first, unless CLAUDE.md already routes or cannot be read.
-export function currentPlan(configDir, report) {
+export function currentPlan(configDir, report, { lang = 'en' } = {}) {
   const { data } = readSettings(settingsPath(configDir));
-  return [routingOffer(configDir, report), ...applicableFixes(report, data)].filter(Boolean);
+  return [routingOffer(configDir, report, lang), ...applicableFixes(report, data, { lang })].filter(Boolean);
 }
 
-function routingOffer(configDir, report) {
+function routingOffer(configDir, report, lang) {
   const file = memoryPath(configDir);
   let memory;
   try {
@@ -88,7 +89,7 @@ function routingOffer(configDir, report) {
   } catch {
     return null;
   }
-  return hasRouting(memory.text) ? null : routingFix(report, { file, rule: ROUTING_RULE });
+  return hasRouting(memory.text) ? null : routingFix(report, { file, rule: ROUTING_RULE, lang });
 }
 
 export function applyFixes({ configDir, fixIds, report, now }) {
@@ -152,7 +153,7 @@ export function applyFixes({ configDir, fixIds, report, now }) {
 }
 
 // Restore only the keys the experiment changed, and only where the value is still the one it set.
-export function revertExperiment({ configDir, now, id = null }) {
+export function revertExperiment({ configDir, now, id = null, lang = 'en' }) {
   const state = loadState(configDir);
   const exp = id ? state.experiments.find((e) => e.id === id) : revertTarget(state.experiments);
   if (!exp) throw new Error(id ? `No experiment "${id}".` : 'There is no applied experiment to revert.');
@@ -171,7 +172,7 @@ export function revertExperiment({ configDir, now, id = null }) {
         skipped.push(c);
         continue;
       }
-      if (hasRouting(text)) notes.push(`\`${c.file}\` still mentions limit-xray:model-routing outside the block limit-xray added; that part was left as is.`);
+      if (hasRouting(text)) notes.push(locale(lang).t.cli.routingLeft({ file: c.file }));
       memoryUndo = { c, text };
       restored.push(c);
       continue;

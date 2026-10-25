@@ -103,6 +103,16 @@ test('analyze writes the dashboard next to its records and says where', () => {
   assert.match(res.stdout, /## Summary/);
 });
 
+test('the dashboard analyze writes lists habits by their text, with no empty item', () => {
+  const { root, projects } = tempRoot();
+  const big = { cache_read_input_tokens: 400_000, output_tokens: 1000 };
+  writeTranscript(projects, 'my-app/s.jsonl', [1, 2, 3].map((i) => assistant({ ts: minutesAgo(60 - i), model: 'claude-opus-5-5', usage: big })));
+  const res = run(root, ['analyze']);
+  assert.equal(res.status, 0, res.stderr);
+  const html = fs.readFileSync(path.join(root, 'limit-xray', 'dashboard.html'), 'utf8');
+  assert.doesNotMatch(html, /<li>\s*<\/li>/);
+});
+
 test('--open belongs to analyze only', () => {
   const { root } = tempRoot();
   const res = run(root, ['plan', '--open']);
