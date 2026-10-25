@@ -34,7 +34,7 @@ Run plan and read its "Revert would restore" section: tell the user each change 
    - the "## Summary" bullets, in plain words;
    - the "## At a glance" block exactly as printed, inside a code block, so its bars stay aligned;
    - the two or three findings that cover the most spend, each with its share, its spend and its evidence in plain words;
-   - the dashboard: say it opened in the browser, with its file path to open it again.
+   - the dashboard, as the Summary's "Dashboard" line puts it: whether it opened in the browser, and its file path to open it again.
 
    If no usage was found, say where the report looked and stop.
 3. Ask one question per "### Question N" under "## Questions", in the output's order, with the AskUserQuestion tool, up to four questions per call. Question 1 is usually model routing. Each question opens with what the thing is, from its "What it is" line, in one or two plain sentences for someone who has never heard of it. Then, in short:
@@ -42,9 +42,9 @@ Run plan and read its "Revert would restore" section: tell the user each change 
    - the change (setting and values, or the line added to CLAUDE.md);
    - the biggest one or two contributors, when listed, and the estimated savings line (or that it cannot be estimated in advance).
 
-   Give each question a header of at most 12 characters (for example "Fix 1") and each option a one-line description. Options, in this order: "Skip" first, then "Show details", then "Apply" for a single fix. A question with alternatives ("Options: `a` or `b`") gets one option per alternative in place of "Apply", named by what it does, with that alternative's own label, change and savings in its description; the user picks one of them or none. Present every question neutrally and keep each label as written: the user decides.
-4. When the user picks "Show details", show that question's full block (what it is, why, every contributor with its cost, how the savings were estimated, source), then ask that question again with "Skip" first and the apply options.
-5. After every question has been answered, if the user chose at least one fix, first show a short summary of what will change: for each chosen fix, the file, the change and its label. Then run apply once with exactly the chosen ids. Apply asks for permission: that is the user's second check. It refuses two alternatives from the same question.
+   Give each question a header of at most 12 characters (for example "Fix 1") and each option a one-line description. Options, labelled in the user's language, in this order: Skip first, then Show details, then Apply for a single fix. A question with alternatives ("Options: `a` or `b`") gets one option per alternative in place of "Apply", named by what it does, with that alternative's own label, change and savings in its description; the user picks one of them or none. Present every question neutrally and keep each label as written: the user decides.
+4. When the user picks Show details, ask that question again with its full block written into the question text: what it is, why, every contributor with its cost, how the savings were estimated, and the source. Its options: Skip first, then the apply options.
+5. After every question has been answered, if the user chose at least one fix, ask one last question before writing anything: its text lists every chosen fix with the file, the change and its label, and asks whether to apply them; its options are Cancel first, then Apply. On Apply, run apply once with exactly the chosen ids. Apply also asks for Claude Code's permission, the user's second check (in auto mode the classifier may approve it instead). It refuses two alternatives from the same question.
 6. Tell the user what changed (files, values, backups) and that it applies to new sessions. Then present "## Other suggestions": things only the user can do, grouped by finding, commands verbatim, said as theirs to type. End with the next steps: `/limit-lens:analyze compare` after a few days of normal use, `/limit-lens:analyze revert` to undo.
 
 If the AskUserQuestion tool is not available, for example in a non-interactive run, present the result as in step 2, list the questions as fixes the user can apply later with `/limit-lens:analyze`, present the other suggestions, and stop without applying anything.
