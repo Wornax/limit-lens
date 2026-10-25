@@ -45,6 +45,15 @@ function readMeta(file) {
   }
 }
 
+const agentLens = () => ({
+  ...bucket(),
+  byType: {},
+  byModel: {},
+  components: { cacheRead: 0, cacheWrite: 0, output: 0, input: 0 },
+  promptTokens: 0,
+  avgPromptTokens: 0,
+});
+
 function newReport(from, to, days) {
   return {
     window: { from: new Date(from).toISOString(), to: new Date(to).toISOString(), days },
@@ -57,10 +66,8 @@ function newReport(from, to, days) {
     mainConversation: bucket(),
     turns: { human: bucket(), automated: { ...bucket(), byKind: {} } },
     loops: { cost: 0, requests: 0, runs: 0, sessions: 0 },
-    agents: {
-      subagent: { ...bucket(), byType: {}, byModel: {} },
-      workflow: { ...bucket(), byType: {}, byModel: {} },
-    },
+    agents: { subagent: agentLens(), workflow: agentLens() },
+    fastMode: bucket(),
     toolSessions: {},
     context: { avgPromptTokens: 0, requestsOver200k: 0, costOver200k: 0 },
     cache: { rebuilds: { afterIdle: { cost: 0, count: 0 }, modelSwitch: { cost: 0, count: 0 }, other: { cost: 0, count: 0 } } },
@@ -155,6 +162,10 @@ export async function analyze({ projectsDirs, now = Date.now(), days = 7, projec
       for (const k of Object.keys(report.components)) report.components[k] += c[k];
       add(report.byModel, c.priceKey, c.total);
       add(report.byEffort, o.effort || 'unknown', c.total);
+      if (usage.speed === 'fast') {
+        report.fastMode.cost += c.total;
+        report.fastMode.requests += 1;
+      }
       const ep = o.entrypoint || 'unknown';
       add(report.byEntrypoint, ep, c.total);
       (entrypointSessions[ep] ??= new Set()).add(`${t.project}/${t.sessionId}`);
@@ -185,6 +196,11 @@ export async function analyze({ projectsDirs, now = Date.now(), days = 7, projec
         const lens = report.agents[t.kind];
         lens.cost += c.total;
         lens.requests += 1;
+        lens.components.cacheRead += c.cacheRead;
+        lens.components.cacheWrite += c.cacheWrite5m + c.cacheWrite1h;
+        lens.components.output += c.output;
+        lens.components.input += c.input;
+        lens.promptTokens += promptTokens;
         add(lens.byType, meta?.agentType || 'unknown', c.total);
         add(lens.byModel, c.priceKey, c.total);
       }
@@ -224,6 +240,10 @@ export async function analyze({ projectsDirs, now = Date.now(), days = 7, projec
   report.totals.sessions = sessions.size;
   const mainRequests = report.mainConversation.requests;
   report.context.avgPromptTokens = mainRequests ? Math.round(mainPromptTokens / mainRequests) : 0;
+  for (const lens of Object.values(report.agents)) {
+    lens.avgPromptTokens = lens.requests ? Math.round(lens.promptTokens / lens.requests) : 0;
+    delete lens.promptTokens;
+  }
   report.topSessions = sessionRows.sort((a, b) => b.cost - a.cost).slice(0, TOP_SESSIONS);
   if (securityLogDir) {
     const sg = readSecurityGuidanceLog(securityLogDir, from, to);
