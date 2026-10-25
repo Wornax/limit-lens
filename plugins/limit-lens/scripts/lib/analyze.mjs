@@ -5,6 +5,7 @@ import readline from 'node:readline';
 import { requestCost, PRICES_AS_OF } from './pricing.mjs';
 import { findTranscripts } from './discover.mjs';
 import { labelForPrompt } from './signatures.mjs';
+import { readSecurityGuidanceLog } from './plugins/security-guidance.mjs';
 
 const DAY = 86_400_000;
 const LOOP_MIN_RUNS = 3;
@@ -64,6 +65,8 @@ function newReport(from, to, days) {
     context: { avgPromptTokens: 0, requestsOver200k: 0, costOver200k: 0 },
     cache: { rebuilds: { afterIdle: { cost: 0, count: 0 }, modelSwitch: { cost: 0, count: 0 }, other: { cost: 0, count: 0 } } },
     topSessions: [],
+    outside: { cost: 0 },
+    plugins: {},
   };
 }
 
@@ -226,6 +229,13 @@ export async function analyze({ projectsDirs, now = Date.now(), days = 7, projec
   const mainRequests = report.mainConversation.requests;
   report.context.avgPromptTokens = mainRequests ? Math.round(mainPromptTokens / mainRequests) : 0;
   report.topSessions = sessionRows.sort((a, b) => b.cost - a.cost).slice(0, TOP_SESSIONS);
+  if (securityLogDir) {
+    const sg = readSecurityGuidanceLog(securityLogDir, from, to);
+    if (sg) {
+      report.plugins.securityGuidance = sg;
+      report.outside.cost += sg.outsideTranscriptsCost;
+    }
+  }
   for (const [ep, set] of Object.entries(entrypointSessions)) report.byEntrypoint[ep].sessions = set.size;
   return report;
 }
