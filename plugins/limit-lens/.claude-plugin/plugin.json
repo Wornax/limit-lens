@@ -5,6 +5,8 @@
   "author": {
     "name": "Wornax"
   },
+  "homepage": "https://github.com/Wornax/limit-lens",
+  "repository": "https://github.com/Wornax/limit-lens",
   "license": "MIT",
   "keywords": ["usage", "tokens", "cost", "limits", "optimization", "cache", "effort", "subagents"]
 }

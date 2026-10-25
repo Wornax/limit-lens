@@ -1,6 +1,6 @@
 # limit-lens: living plan
 
-Status line: **v0.1 in progress** (started 2026-10-25). Update this file as work lands.
+Status line: **v0.1 built and tested; under review** (2026-10-25).
 
 ## Goal
 
@@ -41,14 +41,20 @@ A Claude Code plugin (also its own marketplace) that shows where a user's usage 
 
 ## Steps
 
-- [ ] Skeleton, plan, marketplace and plugin manifests
-- [ ] Pricing (tests first)
-- [ ] Transcript discovery and streaming analysis with dedupe (tests first)
-- [ ] Categories: turns, loops, subagents, entry points, cache rebuilds (tests first)
-- [ ] security-guidance adapter (tests first)
-- [ ] Findings and fixes catalog (verified against docs)
-- [ ] Markdown and JSON report, CLI flags
-- [ ] `report` skill and `model-routing` skill
-- [ ] Validate on the author's real transcripts (local only); `claude plugin validate`
-- [ ] README, research notes, CHANGELOG
+- [x] Skeleton, plan, marketplace and plugin manifests
+- [x] Pricing (tests first)
+- [x] Transcript discovery and streaming analysis with dedupe (tests first)
+- [x] Categories: turns, loops, subagents, entry points, cache rebuilds (tests first)
+- [x] security-guidance adapter (tests first)
+- [x] Findings and fixes catalog (verified against docs)
+- [x] Markdown and JSON report, CLI flags
+- [x] `report` skill and `model-routing` skill
+- [x] Validate on the author's real transcripts (local only); `claude plugin validate`
+- [x] README, research notes, CHANGELOG
 - [ ] Review, commit, push to the private repo
+
+## Notes from building v0.1
+
+- The `!` line in the report skill takes no user input: substituting `$ARGUMENTS` into a shell command would let crafted arguments reach the shell. Other options go through a normal Bash tool call that must match `Bash(node *limit-lens.mjs*)`.
+- End-to-end check: `claude -p "/limit-lens:report --days 2 --anonymize" --plugin-dir plugins/limit-lens --model haiku --permission-mode default` runs with no permission denials (about $0.01).
+- Real 7-day run on a heavy machine: 31-35 s, ~135 MB RSS, report ~1,000 words.
