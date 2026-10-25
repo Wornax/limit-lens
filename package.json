@@ -9,7 +9,7 @@
     "node": ">=18"
   },
   "scripts": {
-    "test": "node --test test/",
+    "test": "node --test",
     "report": "node plugins/limit-lens/scripts/limit-lens.mjs"
   }
 }
