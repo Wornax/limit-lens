@@ -1,6 +1,6 @@
 # limit-lens: living plan
 
-Status line: **v0.2 built: fix, compare and revert, 98 tests green, headless end-to-end runs pass (the interactive question flow needs a person). Pending: review of v0.2, then the author's go-ahead to make the repo public** (2026-10-25).
+Status line: **v0.2 done: fix, compare and revert, reviewed (11 confirmed defects fixed), 108 tests green, headless end-to-end runs pass. Pending: a person trying the interactive question flow, then the author's go-ahead to make the repo public** (2026-10-25).
 
 ## Goal
 
@@ -78,3 +78,7 @@ Decisions:
 5. **Experiments.** Each apply records the fixes, the previous value of every key it changed, and a baseline snapshot of the 7 days before. State lives in `<config dir>/limit-lens/experiments.json`, the same place whether run from the skill or the CLI.
 6. **Before and after.** `compare` measures the time since the apply against the baseline: spend per active day and per request, and the shares of each lens. It says "too early" until there are at least 2 active days and 200 requests, and it reminds that workload differs between periods.
 7. **Undo.** `revert` restores only the keys the experiment changed, and skips any key the user has changed since.
+
+## v0.2 review (2026-10-25)
+
+Two finders (Opus on the settings-writing path, Sonnet on settings accuracy) with an Opus skeptic per finding: 11 confirmed, 1 refuted, all fixed with tests in `tests/review-v02.test.mjs`. A damaged `experiments.json` now stops apply and revert instead of being overwritten; `plan` shows exactly what `revert --experiment ID` restores; writes keep indentation, line endings and BOM, follow a symlinked file, keep its mode, and leave nothing behind on failure; each security-guidance fix needs its own evidence and the model fixes are skipped on third-party providers; the effort and auto-compact fixes skip environment overrides; `opusplan` is left alone; the hold fix states that held messages are not delivered.
