@@ -52,8 +52,9 @@ const FALLBACK = 'sonnet-5-5';
 // table takes the closest earlier version of its family and is flagged as estimated.
 export function resolveModel(modelId) {
   const id = String(modelId || '')
+    .slice(0, 200) // ids are short; a long one is junk and must not slow the scan
     .toLowerCase()
-    .replace(/\[.*?\]/g, '')
+    .replace(/\[[^[\]]*\]/g, '')
     .replace(/-v\d+(:\d+)?$/, '')
     .replace(/-\d{8}$/, '');
   let m = id.match(/claude-(opus|sonnet|haiku|fable|mythos)-(\d+)(?:-(\d+))?/);

@@ -75,12 +75,14 @@ test('searched folders are escaped, and hidden with --anonymize', async () => {
   assert.ok(!anon.includes('alice'));
 });
 
-test('a window longer than the history on disk says so', async () => {
+test('a window longer than the retained history says so, with the date it starts', async () => {
   const { projects } = tempRoot();
-  writeTranscript(projects, 'p/s.jsonl', [assistant({ ts: daysAgo(5), usage: out }), assistant({ ts: minutesAgo(5), usage: out })]);
-  const r = await run(projects, { days: 30 });
+  writeTranscript(projects, 'p/s.jsonl', [assistant({ ts: daysAgo(29.5), usage: out }), assistant({ ts: minutesAgo(5), usage: out })]);
+  const r = await run(projects, { days: 60 });
   assert.ok(r.notes.includes('history-shorter-than-window'));
-  assert.match(renderMarkdown(r, findings(r)), /cleanupPeriodDays/);
+  const md = renderMarkdown(r, findings(r));
+  assert.match(md, /cleanupPeriodDays/);
+  assert.match(md, /start on \d{4}-\d{2}-\d{2}/);
   const short = await run(projects, { days: 3 });
   assert.ok(!short.notes.includes('history-shorter-than-window'));
 });

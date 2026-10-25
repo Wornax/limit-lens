@@ -89,7 +89,25 @@ function walk(dir, project, rel, sinceMs, out, visited) {
   }
 }
 
+// Names of the project folders under the given projects directories.
+export function listProjects(projectsDirs) {
+  const names = new Set();
+  for (const dir of projectsDirs) {
+    try {
+      for (const e of fs.readdirSync(dir, { withFileTypes: true })) if (e.isDirectory() || e.isSymbolicLink()) names.add(e.name);
+    } catch {
+      // missing folder: nothing to list
+    }
+  }
+  return [...names];
+}
+
 function describe(project, parts, file) {
+  // Older Claude Code versions wrote sidechain (subagent) transcripts at the project root as agent-*.jsonl;
+  // their parent session is in each line's sessionId.
+  if (parts.length === 1 && /^agent-[^\\/]+\.jsonl$/.test(parts[0])) {
+    return { file, project, sessionId: null, kind: 'subagent', metaFile: file.replace(/\.jsonl$/, '.meta.json') };
+  }
   const subIdx = parts.indexOf('subagents');
   if (subIdx > 0) {
     const sessionId = parts[subIdx - 1];

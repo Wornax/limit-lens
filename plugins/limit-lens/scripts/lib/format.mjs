@@ -33,4 +33,9 @@ const MODEL_NAMES = {
   'haiku-3-5': 'Haiku 3.5', 'haiku-3': 'Haiku 3', 'fable-5-1': 'Fable 5.1', 'fable-5': 'Fable 5',
   'mythos-5-1': 'Mythos 5.1', 'mythos-5': 'Mythos 5',
 };
-export const modelName = (key) => MODEL_NAMES[key] || key;
+// "sonnet-5-5~" (estimated price) reads as "Sonnet 5.5~".
+export const modelName = (key) => {
+  const estimated = key.endsWith('~');
+  const base = estimated ? key.slice(0, -1) : key;
+  return (MODEL_NAMES[base] || base) + (estimated ? '~' : '');
+};

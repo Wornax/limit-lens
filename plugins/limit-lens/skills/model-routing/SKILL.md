@@ -7,7 +7,7 @@ description: Pick the right model (Haiku, Sonnet or Opus) and effort for each pi
 
 **Who this is for:** whoever starts agents: the main session, a workflow, or a subagent that can start its own. An agent working on a task it was given does it on the model it was started with, and if the task is above that model it hands the request back to whoever started it.
 
-**Why it matters:** usage limits drain much faster on Opus. At list prices, output costs roughly Opus 1, Sonnet 1/2, Haiku 1/40 (see the [pricing page](https://platform.claude.com/docs/en/about-claude/pricing); `/limit-lens:report` shows which models your work actually ran on). A simple task on Opus wastes limit. A hard task on Haiku comes back wrong and costs more than doing it right once. A risky task on a weak model can break something that can't be undone.
+**Why it matters:** the model you run on changes how fast you reach your usage limit, and Opus costs the most per token. Anthropic does not publish how plan limits weigh each model, but list prices are the best guide: output costs roughly Opus 1, Sonnet 1/2, Haiku 1/40, and a Haiku 5.5 request whose prompt is over 100K tokens pays a higher tier (about 1/8 of Opus on output), so keep Haiku agents short. See the [pricing page](https://platform.claude.com/docs/en/about-claude/pricing); `/limit-lens:report` shows which models your work actually ran on. A simple task on Opus wastes limit. A hard task on Haiku comes back wrong and costs more than doing it right once. A risky task on a weak model can break something that can't be undone.
 
 **The rule:** use the smallest model that gets it right on the first try without putting anything risky at stake, and always say which one you picked.
 
@@ -37,7 +37,7 @@ If yes:
 **2. Is there an answer key?** A clear brief with a test, a command, or a check that says whether it worked.
 - **Yes, and the steps are fixed** (known recipe, no decisions along the way): **Haiku**.
 - **Yes, but it needs to understand code, write something new, or solve problems along the way:** **Sonnet**.
-- **No.** The task is deciding what to do, designing, or weighing trade-offs: **Opus**.
+- **No, and the task is deciding what to do, designing, or weighing trade-offs:** **Opus**. A task with no automated check but a stated standard to work against (a decided design, given targets, an ordinary low-risk review) is **Sonnet**.
 
 Finding a bug's cause starts on Sonnet at high effort, with a test that reproduces it. It moves to Opus after two failed attempts, or if the bug crosses several systems or touches a rule from question 1. An attempt counts when its report says what was tried and what was ruled out; one that came back with no cause and no evidence counts as two.
 
@@ -46,7 +46,7 @@ Finding a bug's cause starts on Sonnet at high effort, with a test that reproduc
 - **One module with its tests, or one brief:** Sonnet.
 - **Several systems plus the history of decisions:** Opus.
 
-**If the questions disagree,** take the larger model, except when a ready checklist covers a large-context task (question 3) and question 1 found no risk.
+**If the questions disagree,** take the larger model, except when a ready checklist covers a large-context task (question 3) and question 1 found no risk. For the tasks listed in the pocket table below, the table wins.
 
 ## 3. Pocket table
 

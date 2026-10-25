@@ -44,6 +44,8 @@ test('the re-read finding points at /clear, /compact and the auto-compact window
   const r = await emptyReport();
   r.totals.cost = 100;
   r.components.cacheRead = 60;
+  r.mainConversation.requests = 10;
+  r.context.requestsOver200k = 5; // huge contexts: auto-compaction advice applies
   const text = JSON.stringify(findings(r).find((x) => x.id === 'reread'));
   assert.match(text, /\/clear/);
   assert.match(text, /\/compact/);

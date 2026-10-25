@@ -4,7 +4,7 @@ import path from 'node:path';
 import { analyze } from './lib/analyze.mjs';
 import { defaultConfigDirs, securityGuidanceLogFile } from './lib/discover.mjs';
 import { findings } from './lib/findings.mjs';
-import { renderMarkdown, anonymizer, clean } from './lib/report.mjs';
+import { renderMarkdown, anonymizer, clean, UUID } from './lib/report.mjs';
 
 const USAGE = `Usage: limit-lens [--days N] [--project NAME] [--anonymize] [--json] [--config-dir PATH]
 
@@ -15,8 +15,6 @@ const USAGE = `Usage: limit-lens [--days N] [--project NAME] [--anonymize] [--js
   --config-dir PATH  Claude config folder (default: CLAUDE_CONFIG_DIR, ~/.claude and ~/.config/claude)
 `;
 
-const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-
 // Agent types Claude Code ships with; any other name is the user's own and is hidden by --anonymize.
 const BUILT_IN_AGENTS = new Set(['general-purpose', 'Explore', 'Plan', 'statusline-setup', 'claude-code-guide', 'workflow-subagent', 'fork', 'unknown', 'other']);
 
@@ -25,13 +23,16 @@ function fail(message) {
   process.exit(2);
 }
 
-function parseArgs(argv) {
+function parseArgs(rawArgv) {
   const opts = { days: 7, project: null, anonymize: false, json: false, configDir: null, now: null };
+  // Accept --flag=value as well as --flag value.
+  const argv = rawArgv.flatMap((a) => (/^--[a-z-]+=/.test(a) ? [a.slice(0, a.indexOf('=')), a.slice(a.indexOf('=') + 1)] : [a]));
   for (let i = 0; i < argv.length; i++) {
     const a = argv[i];
     const value = () => {
       const v = argv[++i];
-      if (v === undefined || v.trim() === '') fail(`Missing value for ${a}`);
+      // A value never starts with "--": that is the next flag, not this one's value.
+      if (v === undefined || v.trim() === '' || v.startsWith('--')) fail(`Missing value for ${a}`);
       return v;
     };
     if (a === '--days') opts.days = Number(value());
@@ -77,11 +78,13 @@ const found = findings(report);
 
 if (opts.json) {
   if (opts.anonymize) anonymizeJson(report);
-  // Names come from disk: keep real session ids (UUIDs), and reduce anything else to a cleaned stub.
-  for (const s of report.topSessions) {
-    s.sessionId = UUID.test(s.sessionId) ? s.sessionId : clean(s.sessionId).slice(0, 8);
+  // Names come from disk: keep real session ids (UUIDs); anything else becomes a cleaned stub,
+  // or a placeholder under --anonymize.
+  report.topSessions.forEach((s, i) => {
+    s.sessionId = UUID.test(s.sessionId) ? s.sessionId : opts.anonymize ? `session-${i + 1}` : clean(s.sessionId).slice(0, 8);
     s.project = clean(s.project).slice(0, 80);
-  }
+  });
+  if (report.filter) report.filter.project = clean(report.filter.project);
   process.stdout.write(JSON.stringify({ report, findings: found }, null, 2) + '\n');
 } else {
   process.stdout.write(renderMarkdown(report, found, { anonymize: opts.anonymize, searched: projectsDirs }));

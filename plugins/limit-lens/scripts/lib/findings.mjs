@@ -1,72 +1,66 @@
 // Turn a report into ranked findings. Every fix names a setting or command checked against the
-// Claude Code docs (links in `docs`); keep it that way when adding fixes.
-import { usd, pct, tokens, sumCost, topEntries, modelName } from './format.mjs';
+// Claude Code docs (links in `docs`); keep it that way when adding fixes. Fixes that only make
+// sense for some usage patterns are offered only when the evidence shows that pattern.
+import { usd, pct, tokens, sumCost, topEntries } from './format.mjs';
 
 const DOCS = 'https://code.claude.com/docs/en';
 
 // Minimum share of total spend before a lens becomes a finding.
 const THRESHOLDS = { reread: 0.25, agents: 0.2, effort: 0.3, opus: 0.6, rebuilds: 0.05, automation: 0.05, plugins: 0.01, startup: 0.03 };
+// What counts as a long-running agent, and as a trivial one.
+const LONG_AGENT = { requestsPerAgent: 50, avgPromptTokens: 100_000 };
+const TRIVIAL_AGENT_REQUESTS = 10;
 
 const isOpus = (k) => k.startsWith('opus');
+const perAgent = (lens) => (lens.agents ? lens.requests / lens.agents : 0);
 
 export function findings(r) {
   const total = r.totals.cost;
   if (!total) return [];
   const out = [];
   const share = (cost) => cost / total;
+  const sub = r.agents.subagent;
+  const wf = r.agents.workflow;
+  const longAgents = [sub, wf].some((l) => perAgent(l) >= LONG_AGENT.requestsPerAgent && l.avgPromptTokens >= LONG_AGENT.avgPromptTokens);
 
   // Re-reading the conversation on every request.
   const reread = r.components.cacheRead;
   if (share(reread) >= THRESHOLDS.reread) {
-    const evidence = [`Cache reads are ${pct(reread, total)} of spend (${usd(reread)}): every request, including each tool call, re-sends the whole conversation.`];
+    const evidence = [`Cache reads are ${pct(reread, total)} of spend (${usd(reread)}): every request, including each tool call, re-sends the whole conversation (main sessions and agents alike).`];
     if (r.mainConversation.requests) {
       evidence.push(`Main conversations average ${tokens(r.context.avgPromptTokens)} tokens per request; ${r.context.requestsOver200k.toLocaleString('en-US')} requests were over 200K tokens.`);
     }
-    out.push({
-      id: 'reread',
-      title: 'Re-reading long conversations',
-      cost: reread,
-      evidence,
-      fixes: [
-        'Run `/clear` between unrelated tasks (`/rename` first so you can `/resume` it later).',
-        'Compact at natural breaks with `/compact`, or compact earlier automatically: `/autocompact 300k`, or `"autoCompactWindow": 300000` in settings.json.',
-        'Send verbose work (test runs, logs, wide searches) to a subagent so only its summary lands in the main conversation.',
-        'Use `/rewind` to drop a dead end instead of carrying it.',
-      ],
-      docs: [`${DOCS}/costs#reduce-token-usage`, `${DOCS}/model-config#set-the-auto-compact-window`],
-    });
+    const fixes = ['Run `/clear` between unrelated tasks (`/rename` first so you can `/resume` it later).'];
+    fixes.push(r.context.requestsOver200k > 0
+      ? 'Compact at natural breaks with `/compact`, or compact earlier automatically: `/autocompact 300k`, or `"autoCompactWindow": 300000` in settings.json.'
+      : 'Compact at natural breaks with `/compact`.');
+    fixes.push('Send verbose work (test runs, logs, wide searches) to a subagent so only its summary lands in the main conversation.', 'Use `/rewind` to drop a dead end instead of carrying it.');
+    out.push({ id: 'reread', title: 'Re-reading long conversations', cost: reread, evidence, fixes, docs: [`${DOCS}/costs#reduce-token-usage`, `${DOCS}/model-config#set-the-auto-compact-window`] });
   }
 
   // Subagents and workflow agents.
-  const sub = r.agents.subagent;
-  const wf = r.agents.workflow;
   const agentsCost = sub.cost + wf.cost;
   if (share(agentsCost) >= THRESHOLDS.agents) {
     const evidence = [`Subagents ${pct(sub.cost, total)} and workflow agents ${pct(wf.cost, total)} of spend (${usd(agentsCost)}).`];
     for (const [name, lens] of [['subagents', sub], ['workflow agents', wf]]) {
       if (!lens.requests) continue;
-      const perAgent = lens.agents ? ` over ${lens.agents.toLocaleString('en-US')} agents (~${Math.round(lens.requests / lens.agents)} requests each)` : '';
-      evidence.push(`Your ${name} made ${lens.requests.toLocaleString('en-US')} requests${perAgent}, averaging ${tokens(lens.avgPromptTokens)} tokens of context per request.`);
+      const each = lens.agents ? ` over ${lens.agents.toLocaleString('en-US')} agents (~${Math.round(perAgent(lens))} requests each)` : '';
+      evidence.push(`Your ${name} made ${lens.requests.toLocaleString('en-US')} requests${each}, averaging ${tokens(lens.avgPromptTokens)} tokens of context per request.`);
     }
-    const opusAgents = [sub.byModel, wf.byModel]
-      .flatMap((m) => Object.entries(m))
-      .filter(([k]) => isOpus(k))
-      .reduce((s, [, b]) => s + b.cost, 0);
+    const opusAgents = [sub.byModel, wf.byModel].flatMap((m) => Object.entries(m)).filter(([k]) => isOpus(k)).reduce((s, [, b]) => s + b.cost, 0);
     if (opusAgents > 0) evidence.push(`Opus runs ${pct(opusAgents, agentsCost)} of agent spend.`);
-    out.push({
-      id: 'agents',
-      title: 'Subagents and workflow agents',
-      cost: agentsCost,
-      evidence,
-      fixes: [
-        'Run agents on a smaller model: `"env": { "CLAUDE_CODE_SUBAGENT_MODEL": "sonnet" }` in settings.json sets the default; add `"CLAUDE_CODE_SUBAGENT_MODEL_FORCE": "1"` to apply it to every subagent, teammate and workflow agent (Claude Code 2.1.257+).',
-        'Give custom agents a `model:` and an `effort:` in their frontmatter.',
-        'Keep agent tasks short and scoped: an agent that makes hundreds of tool calls re-reads its own growing context on every one.',
+    const fixes = [
+      'Run agents on a smaller model: `"env": { "CLAUDE_CODE_SUBAGENT_MODEL": "sonnet" }` in settings.json sets the model for agents that do not choose one themselves.',
+      'Give custom agents a `model:` and an `effort:` in their frontmatter, and pick per task with `/limit-lens:model-routing`.',
+      'The blunt option: `"CLAUDE_CODE_SUBAGENT_MODEL_FORCE": "1"` together with `CLAUDE_CODE_SUBAGENT_MODEL` puts every subagent, teammate and workflow agent on that model and ignores frontmatter and per-call choices (Claude Code 2.1.257+).',
+    ];
+    if (longAgents) {
+      fixes.push(
+        'Keep agent tasks bounded: an agent that makes hundreds of tool calls re-reads its own growing context on every one.',
         'Let long-running custom agents compact earlier: `autoCompactWindow: 200000` in their frontmatter (a plain integer, Claude Code 2.1.296+).',
-        'In workflows, give each agent the smallest model that can do its step (see `/limit-lens:model-routing`).',
-      ],
-      docs: [`${DOCS}/sub-agents#choose-a-model`],
-    });
+      );
+    }
+    out.push({ id: 'agents', title: 'Subagents and workflow agents', cost: agentsCost, evidence, fixes, docs: [`${DOCS}/sub-agents#choose-a-model`] });
   }
 
   // Effort level.
@@ -80,8 +74,8 @@ export function findings(r) {
       cost: highEffort,
       evidence,
       fixes: [
-        'Use `/effort high` or `/effort medium` for routine work (Opus, Sonnet and Haiku 5.5 default to medium).',
-        'Save it per model in `modelSettings`, or set `"effortLevel": "high"` in settings.json (`max` cannot be saved in settings).',
+        'Use `/effort high` or `/effort medium` for routine work. Typed with a level, `/effort` saves it for the current model (under `modelSettings` in your user settings). Opus, Sonnet and Haiku 5.5 start at medium.',
+        'To set one level for every model, put `"effortLevel": "high"` in project or local settings; in your user settings that key no longer applies to Opus 5.5 and newer models. `max` cannot be saved in settings.',
         'Keep xhigh and max for hard problems; the docs warn that `max` can overthink.',
         'Set `effort:` in the frontmatter of skills and subagents that do repetitive work.',
       ],
@@ -106,40 +100,40 @@ export function findings(r) {
     });
   }
 
-  // Cache rebuilds.
+  // Cache rewritten mid-session.
   const rb = r.cache.rebuilds;
   const rebuildCost = rb.afterIdle.cost + rb.modelSwitch.cost + rb.other.cost;
   if (share(rebuildCost) >= THRESHOLDS.rebuilds) {
-    const evidence = [`${(rb.afterIdle.count + rb.modelSwitch.count + rb.other.count).toLocaleString('en-US')} requests rewrote most of their prompt into the cache (${usd(rebuildCost)}, ${pct(rebuildCost, total)}).`];
-    if (rb.afterIdle.count) evidence.push(`${rb.afterIdle.count.toLocaleString('en-US')} came after a pause longer than the cache lifetime (${usd(rb.afterIdle.cost)}); ${rb.modelSwitch.count} after a model switch.`);
+    const count = rb.afterIdle.count + rb.modelSwitch.count + rb.other.count;
+    const causes = [
+      rb.afterIdle.count && `${rb.afterIdle.count.toLocaleString('en-US')} after a pause longer than the cache lifetime (${usd(rb.afterIdle.cost)})`,
+      rb.modelSwitch.count && `${rb.modelSwitch.count.toLocaleString('en-US')} after a model switch (${usd(rb.modelSwitch.cost)})`,
+      rb.other.count && `${rb.other.count.toLocaleString('en-US')} with no pause or model switch (${usd(rb.other.cost)}): compaction, or a change at the start of the prompt such as new tools or a Claude Code upgrade`,
+    ].filter(Boolean);
+    const fixes = [];
+    if (rb.afterIdle.count) fixes.push('Before stepping away from a large session, run `/compact` while the cache is still warm. After a long break, start fresh (`/clear`) instead of continuing or compacting a huge conversation: once the cache has expired, the next request, including the one `/compact` sends, reprocesses the whole conversation.');
+    if (rb.modelSwitch.count) fixes.push('Pick model and effort at the start of a session: `/model` mid-session rebuilds the cache (effort changes keep it on the 5.5 models).');
+    if (rb.other.count) fixes.push('If tool search is off on your setup, connect MCP servers at the start of a session: adding or removing one mid-session rebuilds the cache. With tool search on (the default) it does not, and plugin skills, commands, agents and hooks never do.');
+    if (rb.afterIdle.count) fixes.push('On an API key or usage credits the main conversation gets a 5-minute cache; `"promptCacheTtl": "1h"` keeps it through longer pauses.');
     out.push({
       id: 'rebuilds',
-      title: 'Cache rebuilt after pauses',
+      title: 'Cache rewritten mid-session',
       cost: rebuildCost,
-      evidence,
-      fixes: [
-        'Before stepping away from a large session, run `/compact` while the cache is still warm. After a long break, start fresh (`/clear`) instead of continuing or compacting a huge conversation: once the cache has expired, the next request, including the one `/compact` sends, reprocesses the whole conversation.',
-        'Pick model and effort at the start of a session: `/model` mid-session rebuilds the cache (effort changes keep it on the 5.5 models).',
-        'If tool search is off on your setup, connect MCP servers at the start of a session: adding or removing one mid-session rebuilds the cache. With tool search on (the default) it does not, and plugin skills, commands, agents and hooks never do.',
-        'On an API key or usage credits the main conversation gets a 5-minute cache; `"promptCacheTtl": "1h"` keeps it through longer pauses.',
-      ],
+      evidence: [`${count.toLocaleString('en-US')} requests rewrote most of their prompt into the cache instead of reading it (${usd(rebuildCost)}, ${pct(rebuildCost, total)}): ${causes.join('; ')}.`],
+      fixes,
       docs: [`${DOCS}/prompt-caching`],
     });
   }
 
-  // Automated turns and loops.
+  // Automated turns and loops (loop firings are counted as automated).
   const auto = r.turns.automated;
-  const automationCost = auto.cost; // includes loop firings, which are reclassified as automated
-  if (share(automationCost) >= THRESHOLDS.automation) {
-    const evidence = [];
-    if (auto.cost) {
-      evidence.push(`Turns not started by you cost ${usd(auto.cost)} (${pct(auto.cost, total)}): ${topEntries(auto.byKind, total, 3)}, about ${usd(auto.cost / Math.max(auto.requests, 1))} per request.`);
-    }
+  if (share(auto.cost) >= THRESHOLDS.automation) {
+    const evidence = [`Turns not started by you cost ${usd(auto.cost)} (${pct(auto.cost, total)}): ${topEntries(auto.byKind, total, 3)}, about ${usd(auto.cost / Math.max(auto.requests, 1))} per request.`];
     if (r.loops.cost) evidence.push(`Repeated prompts (loops) ran ${r.loops.runs} times in ${r.loops.sessions} sessions for ${usd(r.loops.cost)}.`);
     out.push({
       id: 'automation',
       title: 'Loops and automated turns',
-      cost: automationCost,
+      cost: auto.cost,
       evidence,
       fixes: [
         'Every automated turn (a loop firing, a background task reporting back, a message from another session) re-reads the whole conversation: keep them out of long sessions.',
@@ -151,15 +145,22 @@ export function findings(r) {
     });
   }
 
-  // Plugins and tools that call the model.
-  const toolCost = sumCost(r.toolSessions) + r.outside.cost;
-  if (share(toolCost) >= THRESHOLDS.plugins) {
-    const evidence = [`Sessions started by tools and plugin calls outside transcripts cost ${usd(toolCost)} (${pct(toolCost, total)}): ${topEntries(r.toolSessions, total, 3)}${r.outside.cost ? `, plus ${usd(r.outside.cost)} of plugin calls that never reach transcripts` : ''}.`];
-    const fixes = ['Check which plugin or script starts these sessions and whether it lets you choose a cheaper model.'];
+  // Plugins and tools that call the model. Spend outside transcripts is not in the total, so it is
+  // shown in dollars only and never divided by the total.
+  const inTotal = sumCost(r.toolSessions);
+  const outside = r.outside.cost;
+  if (share(inTotal) >= THRESHOLDS.plugins || outside > 0) {
+    const evidence = [];
+    if (inTotal) evidence.push(`Sessions started by tools through the Agent SDK cost ${usd(inTotal)} (${pct(inTotal, total)}): ${topEntries(r.toolSessions, total, 3)}.`);
+    if (outside) evidence.push(`Plugin calls that never reach transcripts cost another ${usd(outside)}, not included in the total.`);
+    const fixes = [];
     if (r.toolSessions['security-guidance review'] || r.plugins.securityGuidance) {
-      fixes.unshift('security-guidance: `SECURITY_REVIEW_MODEL=claude-sonnet-5-5` and `SG_AGENTIC_MODEL=claude-sonnet-5-5` move its reviews to Sonnet; `ENABLE_STOP_REVIEW=0` drops the review after every turn and keeps the commit and push reviews.');
+      fixes.push('security-guidance: `SECURITY_REVIEW_MODEL=claude-sonnet-5-5` and `SG_AGENTIC_MODEL=claude-sonnet-5-5` move its reviews to Sonnet; `ENABLE_STOP_REVIEW=0` drops the review after every turn and keeps the commit and push reviews.');
     }
-    out.push({ id: 'plugins', title: 'Plugins that call the model', cost: toolCost, evidence, fixes, docs: [`${DOCS}/plugins/overview`] });
+    if (r.toolSessions['other SDK sessions']) {
+      fixes.push('Other SDK sessions come from your own scripts or plugins built on the Agent SDK: give them a cheaper `model` in their SDK options.');
+    }
+    out.push({ id: 'plugins', title: 'Plugins that call the model', cost: inTotal, outsideCost: outside, evidence, fixes, docs: [`${DOCS}/plugins/overview`] });
   }
 
   // Setup written by every new session and agent.
@@ -169,19 +170,19 @@ export function findings(r) {
       .filter(([, k]) => k.count)
       .map(([n, k]) => `${k.count.toLocaleString('en-US')} ${n}`)
       .join(', ');
+    const fixes = [
+      'Run `/context` to see what loads at startup; `/memory` opens the CLAUDE.md and memory files.',
+      'Keep CLAUDE.md short (the docs suggest under 200 lines) and move instructions for specific workflows into skills, which load only when used.',
+      'Disable MCP servers you are not using in `/mcp`, and remove plugins and skills you do not use.',
+    ];
+    const trivialAgents = [sub, wf].some((l) => l.agents && perAgent(l) < TRIVIAL_AGENT_REQUESTS);
+    if (trivialAgents) fixes.push('Do not start an agent for a one-step job you could do inline: each new agent pays the setup again. The built-in Explore and Plan agents start without your CLAUDE.md files.');
     out.push({
       id: 'startup',
       title: 'Setup written by every new session and agent',
       cost: st.cost,
-      evidence: [
-        `${kinds} started in this window, each writing about ${tokens(st.avgTokens)} tokens of setup (system prompt, tools, CLAUDE.md, memory, skill descriptions) before doing any work: ${usd(st.cost)} (${pct(st.cost, total)}).`,
-      ],
-      fixes: [
-        'Run `/context` to see what loads at startup; `/memory` opens the CLAUDE.md and memory files.',
-        'Keep CLAUDE.md short (the docs suggest under 200 lines) and move instructions for specific workflows into skills, which load only when used.',
-        'Disable MCP servers you are not using in `/mcp`, and remove plugins and skills you do not use: their listings load into every session and agent.',
-        'Prefer fewer agents doing more each over many tiny ones; the built-in Explore and Plan agents start without your CLAUDE.md files.',
-      ],
+      evidence: [`${kinds} started in this window, each writing about ${tokens(st.avgTokens)} tokens of setup (system prompt, tools, CLAUDE.md, memory, skill descriptions) before doing any work: ${usd(st.cost)} (${pct(st.cost, total)}).`],
+      fixes,
       docs: [`${DOCS}/costs#reduce-token-usage`, `${DOCS}/context-window`],
     });
   }
@@ -204,5 +205,5 @@ export function findings(r) {
     });
   }
 
-  return out.sort((a, b) => b.cost - a.cost);
+  return out.sort((a, b) => b.cost - a.cost); // ranked by spend inside the total only
 }

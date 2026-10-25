@@ -1,10 +1,11 @@
 // Stream transcripts once and aggregate API-equivalent cost into the report's lenses.
-// Transcript contents are untrusted: values that reach the report go through `label()`,
-// and every keyed map has a null prototype.
+// Transcript contents are untrusted: every field is type-checked before it is used, values that
+// reach the report go through `label()`, and every keyed map has a null prototype.
 import crypto from 'node:crypto';
 import fs from 'node:fs';
+import path from 'node:path';
 import { requestCost, num, PRICES_AS_OF } from './pricing.mjs';
-import { findTranscripts } from './discover.mjs';
+import { findTranscripts, listProjects } from './discover.mjs';
 import { keptLines } from './lines.mjs';
 import { labelForPrompt } from './signatures.mjs';
 import { readSecurityGuidanceLog } from './plugins/security-guidance.mjs';
@@ -14,7 +15,10 @@ const HOUR = 3_600_000;
 const FIVE_MIN = 300_000;
 const LOOP_MIN_RUNS = 3;
 const TOP_SESSIONS = 5;
-// A request "rebuilds" the cache when it writes most of its prompt again (not just the new turn).
+// Claude Code deletes transcripts older than cleanupPeriodDays, 30 by default.
+const DEFAULT_RETENTION_DAYS = 30;
+// A request "rebuilds" the cache when it writes most of its prompt again instead of reading it:
+// the write is large, most of the prompt, and the previous prompt was mostly not read back.
 const REBUILD_MIN_TOKENS = 10_000;
 const REBUILD_MIN_SHARE = 0.5;
 
@@ -31,6 +35,7 @@ const bucket = () => ({ cost: 0, requests: 0 });
 // Only short, plain identifiers from transcripts reach the report.
 export function label(value, max = 24) {
   if (value === undefined || value === null || value === '') return 'unknown';
+  if (typeof value !== 'string' && typeof value !== 'number') return 'other';
   const s = String(value);
   if (RESERVED_KEYS.has(s) || !new RegExp(`^[A-Za-z0-9_.:-]{1,${max}}$`).test(s)) return 'other';
   return s;
@@ -57,8 +62,13 @@ function promptText(o) {
   const c = o.message?.content;
   if (typeof c === 'string') return c;
   if (!Array.isArray(c) || c.some((b) => b?.type === 'tool_result')) return null;
-  return c.filter((b) => b?.type === 'text').map((b) => b.text).join('\n');
+  return c.filter((b) => b?.type === 'text' && typeof b.text === 'string').map((b) => b.text).join('\n');
 }
+
+const timeOf = (v) => (typeof v === 'string' ? Date.parse(v) : NaN);
+const str = (v) => (typeof v === 'string' && v ? v : null);
+// Estimated prices keep their own bucket, marked with "~".
+const modelKey = (c) => (c.estimated ? `${c.priceKey}~` : c.priceKey);
 
 function readMeta(file) {
   try {
@@ -99,6 +109,7 @@ function newReport(from, to, days) {
     topSessions: [],
     outside: { cost: 0 },
     plugins: {},
+    filter: null,
     notes: [],
   };
 }
@@ -107,22 +118,24 @@ export async function analyze({ projectsDirs, now = Date.now(), days = 7, projec
   const to = typeof now === 'number' ? now : now.getTime();
   const from = to - days * DAY;
   const report = newReport(from, to, days);
-  const seen = new Set();
-  const sessions = new Set();
-  const entrypointSessions = map();
+  const state = { from, to, report, seen: new Set(), sessions: new Set(), entrypointSessions: map(), oldest: Infinity };
   const sessionRows = [];
   let mainPromptTokens = 0;
 
   let transcripts = findTranscripts(projectsDirs, from);
-  if (project) transcripts = transcripts.filter((t) => t.project.toLowerCase().includes(project.toLowerCase()));
+  if (project) {
+    const needle = project.toLowerCase();
+    transcripts = transcripts.filter((t) => t.project.toLowerCase().includes(needle));
+    report.filter = { project, matchingFolders: listProjects(projectsDirs).filter((p) => p.toLowerCase().includes(needle)).length };
+  }
 
   for (const t of transcripts) {
     const f = {
       cost: 0, requests: 0, entrypoint: null, firstLabel: undefined, turn: { hash: null }, hashes: new Map(),
-      prevTs: null, prevModel: null, ttlMs: HOUR, promptTokens: 0, rereadCost: 0,
+      prevTs: null, prevModel: null, prevPromptTokens: 0, ttlMs: HOUR, promptTokens: 0, rereadCost: 0, sawResponse: false,
     };
     try {
-      await readTranscript(t, f, { from, to, report, seen, sessions, entrypointSessions });
+      await readTranscript(t, f, state);
     } catch {
       report.notes.push('unreadable-transcript');
       continue;
@@ -131,22 +144,24 @@ export async function analyze({ projectsDirs, now = Date.now(), days = 7, projec
     if (t.kind === 'main') mainPromptTokens += f.promptTokens;
   }
 
-  report.totals.sessions = sessions.size;
+  report.totals.sessions = state.sessions.size;
   const mainRequests = report.mainConversation.requests;
   report.context.avgPromptTokens = mainRequests ? Math.round(mainPromptTokens / mainRequests) : 0;
   for (const lens of Object.values(report.agents)) {
     lens.avgPromptTokens = lens.requests ? Math.round(lens.promptTokens / lens.requests) : 0;
     delete lens.promptTokens;
   }
-  for (const [ep, set] of Object.entries(entrypointSessions)) report.byEntrypoint[ep].sessions = set.size;
+  for (const [ep, set] of Object.entries(state.entrypointSessions)) report.byEntrypoint[ep].sessions = set.size;
   report.startup.avgTokens = report.startup.count ? Math.round(report.startup.tokens / report.startup.count) : 0;
   delete report.startup.tokens;
-  // Claude Code deletes transcripts after cleanupPeriodDays (30 by default), so a long window can outrun the history.
-  const oldest = report.window.oldestSeenMs;
-  delete report.window.oldestSeenMs;
-  if (oldest !== undefined && oldest > from + DAY) {
-    report.window.oldestData = new Date(oldest).toISOString();
-    report.notes.push('history-shorter-than-window');
+
+  // Only blame retention when it can be the cause: the window is longer than the default retention
+  // and the oldest data sits at the retention edge.
+  if (Number.isFinite(state.oldest)) {
+    report.window.oldestData = new Date(state.oldest).toISOString();
+    if (days > DEFAULT_RETENTION_DAYS && state.oldest > from + DAY && state.oldest <= to - (DEFAULT_RETENTION_DAYS - 1) * DAY) {
+      report.notes.push('history-shorter-than-window');
+    }
   }
   report.topSessions = sessionRows.sort((a, b) => b.cost - a.cost).slice(0, TOP_SESSIONS);
 
@@ -164,7 +179,7 @@ export async function analyze({ projectsDirs, now = Date.now(), days = 7, projec
   return report;
 }
 
-async function readTranscript(t, f, { from, to, report, seen, sessions, entrypointSessions }) {
+async function readTranscript(t, f, state) {
   const meta = t.metaFile ? readMeta(t.metaFile) : null;
   for await (const { text } of keptLines(t.file, { wantPrompts: t.kind === 'main' })) {
     let o;
@@ -173,121 +188,135 @@ async function readTranscript(t, f, { from, to, report, seen, sessions, entrypoi
     } catch {
       continue;
     }
+    if (!o || typeof o !== 'object') continue;
+    try {
+      if (o.type === 'user') readPrompt(o, f, state);
+      else if (o.type === 'assistant') readResponse(o, t, f, meta, state);
+    } catch {
+      state.report.notes.push('malformed-line');
+    }
+  }
+}
 
-    if (o.type === 'user') {
-      const raw = promptText(o);
-      if (raw === null) continue;
-      const body = raw.trim();
-      if (NOT_A_TURN.test(body)) continue;
-      const ts = Date.parse(o.timestamp);
-      const originKind = o.origin?.kind || null;
-      const promptSource = o.promptSource || null;
-      const normalized = body.replace(/\s+/g, ' ');
-      const hash = normalized ? crypto.createHash('sha1').update(normalized).digest('hex') : null;
-      const scheduled = originKind === 'human' && !promptSource && SCHEDULED_COMMAND.test(body);
-      f.turn = { originKind, promptSource, hash, scheduled };
-      if (f.firstLabel === undefined) f.firstLabel = labelForPrompt(body);
-      if (hash && ts >= from && ts <= to) {
-        const h = f.hashes.get(hash) ?? { runs: 0, cost: 0, requests: 0, humanCost: 0, humanRequests: 0, machine: false };
-        h.runs += 1;
-        f.hashes.set(hash, h);
+function readPrompt(o, f, { from, to }) {
+  const raw = promptText(o);
+  if (raw === null) return;
+  const body = raw.trim();
+  if (NOT_A_TURN.test(body)) return;
+  const ts = timeOf(o.timestamp);
+  const originKind = str(o.origin?.kind);
+  const promptSource = str(o.promptSource);
+  const normalized = body.replace(/\s+/g, ' ');
+  const hash = normalized ? crypto.createHash('sha1').update(normalized).digest('hex') : null;
+  const scheduled = originKind === 'human' && !promptSource && SCHEDULED_COMMAND.test(body);
+  f.turn = { originKind, promptSource, hash, scheduled };
+  if (f.firstLabel === undefined) f.firstLabel = labelForPrompt(body);
+  if (hash && ts >= from && ts <= to) {
+    const h = f.hashes.get(hash) ?? { runs: 0, cost: 0, requests: 0, humanCost: 0, humanRequests: 0, machine: false };
+    h.runs += 1;
+    f.hashes.set(hash, h);
+  }
+}
+
+function readResponse(o, t, f, meta, state) {
+  const { from, to, report, seen, sessions, entrypointSessions } = state;
+  const msg = o.message;
+  const usage = msg?.usage;
+  const model = str(msg?.model);
+  if (!usage || typeof usage !== 'object' || !model || model === '<synthetic>') return;
+  const ts = timeOf(o.timestamp);
+  if (Number.isNaN(ts)) return;
+  // The transcript's first response writes the setup (system prompt, tools, CLAUDE.md, memory, skill list).
+  const isFirst = !f.sawResponse;
+  f.sawResponse = true;
+  if (ts < state.oldest) state.oldest = ts;
+  if (!(ts >= from && ts <= to)) return;
+  const id = str(msg.id) || str(o.requestId);
+  if (id) {
+    if (seen.has(id)) return;
+    seen.add(id);
+  }
+  const c = requestCost(model, usage);
+  if (!(c.total > 0) || !Number.isFinite(c.total)) return;
+  const entrypoint = label(o.entrypoint);
+  const effort = label(o.effort);
+  const created = num(usage.cache_creation_input_tokens);
+  const read = num(usage.cache_read_input_tokens);
+  const promptTokens = num(usage.input_tokens) + read + created;
+  const sessionKey = `${t.project}/${t.sessionId ?? label(o.sessionId, 64)}`;
+
+  // Everything below only adds numbers that were validated above.
+  f.entrypoint ??= entrypoint;
+  f.cost += c.total;
+  f.requests += 1;
+  f.rereadCost += c.cacheRead;
+  sessions.add(sessionKey);
+  report.totals.cost += c.total;
+  report.totals.requests += 1;
+  if (c.estimated) report.totals.estimatedCost += c.total;
+  for (const k of Object.keys(report.components)) report.components[k] += c[k];
+  add(report.byModel, modelKey(c), c.total);
+  add(report.byEffort, effort, c.total);
+  add(report.byEntrypoint, entrypoint, c.total);
+  (entrypointSessions[entrypoint] ??= new Set()).add(sessionKey);
+  if (usage.speed === 'fast') add(report, 'fastMode', c.total);
+
+  if (isFirst) {
+    const setup = c.input + c.cacheWrite5m + c.cacheWrite1h;
+    report.startup.cost += setup;
+    report.startup.count += 1;
+    report.startup.tokens += num(usage.input_tokens) + created;
+    report.startup.byKind[t.kind].cost += setup;
+    report.startup.byKind[t.kind].count += 1;
+  }
+  const lostCache = read < REBUILD_MIN_SHARE * f.prevPromptTokens;
+  if (f.prevTs !== null && created >= REBUILD_MIN_TOKENS && created >= REBUILD_MIN_SHARE * promptTokens && lostCache) {
+    const kind = model !== f.prevModel ? 'modelSwitch' : ts - f.prevTs > f.ttlMs ? 'afterIdle' : 'other';
+    report.cache.rebuilds[kind].cost += c.cacheWrite5m + c.cacheWrite1h;
+    report.cache.rebuilds[kind].count += 1;
+  }
+  if (num(usage.cache_creation?.ephemeral_1h_input_tokens) > 0) f.ttlMs = HOUR;
+  else if (created > 0) f.ttlMs = FIVE_MIN;
+  f.prevTs = ts;
+  f.prevModel = model;
+  f.prevPromptTokens = promptTokens;
+
+  if (t.kind === 'main') {
+    report.mainConversation.cost += c.total;
+    report.mainConversation.requests += 1;
+    f.promptTokens += promptTokens;
+    if (promptTokens > 200_000) {
+      report.context.requestsOver200k += 1;
+      report.context.costOver200k += c.total;
+    }
+    const kind = turnKind(f.turn, f.entrypoint);
+    const h = f.turn.hash ? f.hashes.get(f.turn.hash) : null;
+    if (kind === 'human') add(report.turns, 'human', c.total);
+    else {
+      report.turns.automated.cost += c.total;
+      report.turns.automated.requests += 1;
+      add(report.turns.automated.byKind, kind, c.total);
+    }
+    if (h) {
+      h.cost += c.total;
+      h.requests += 1;
+      if (kind === 'human') {
+        h.humanCost += c.total;
+        h.humanRequests += 1;
       }
-      continue;
+      if (kind !== 'human' || f.turn.scheduled) h.machine = true;
     }
-    if (o.type !== 'assistant') continue;
-
-    const msg = o.message;
-    const usage = msg?.usage;
-    if (!usage || !msg.model || msg.model === '<synthetic>') continue;
-    const ts = Date.parse(o.timestamp);
-    // The transcript's first response writes the setup (system prompt, tools, CLAUDE.md, memory, skill list).
-    const isFirst = !f.sawResponse;
-    f.sawResponse = true;
-    if (ts < (report.window.oldestSeenMs ?? Infinity)) report.window.oldestSeenMs = ts;
-    if (!(ts >= from && ts <= to)) continue;
-    const id = msg.id || o.requestId;
-    if (id) {
-      if (seen.has(id)) continue;
-      seen.add(id);
-    }
-    const c = requestCost(msg.model, usage);
-    if (!(c.total > 0) || !Number.isFinite(c.total)) continue;
-
-    const entrypoint = label(o.entrypoint);
-    f.entrypoint ??= entrypoint;
-    f.cost += c.total;
-    f.requests += 1;
-    f.rereadCost += c.cacheRead;
-    const sessionKey = `${t.project}/${t.sessionId}`;
-    sessions.add(sessionKey);
-
-    report.totals.cost += c.total;
-    report.totals.requests += 1;
-    if (c.estimated) report.totals.estimatedCost += c.total;
-    for (const k of Object.keys(report.components)) report.components[k] += c[k];
-    add(report.byModel, c.priceKey, c.total);
-    add(report.byEffort, label(o.effort), c.total);
-    add(report.byEntrypoint, entrypoint, c.total);
-    (entrypointSessions[entrypoint] ??= new Set()).add(sessionKey);
-    if (usage.speed === 'fast') add(report, 'fastMode', c.total);
-
-    const created = num(usage.cache_creation_input_tokens);
-    const promptTokens = num(usage.input_tokens) + num(usage.cache_read_input_tokens) + created;
-    if (isFirst) {
-      const setup = c.input + c.cacheWrite5m + c.cacheWrite1h;
-      report.startup.cost += setup;
-      report.startup.count += 1;
-      report.startup.tokens += num(usage.input_tokens) + created;
-      report.startup.byKind[t.kind].cost += setup;
-      report.startup.byKind[t.kind].count += 1;
-    }
-    if (f.prevTs !== null && created >= REBUILD_MIN_TOKENS && created >= REBUILD_MIN_SHARE * promptTokens) {
-      const kind = msg.model !== f.prevModel ? 'modelSwitch' : ts - f.prevTs > f.ttlMs ? 'afterIdle' : 'other';
-      report.cache.rebuilds[kind].cost += c.cacheWrite5m + c.cacheWrite1h;
-      report.cache.rebuilds[kind].count += 1;
-    }
-    if (usage.cache_creation?.ephemeral_1h_input_tokens > 0) f.ttlMs = HOUR;
-    else if (created > 0) f.ttlMs = FIVE_MIN;
-    f.prevTs = ts;
-    f.prevModel = msg.model;
-
-    if (t.kind === 'main') {
-      report.mainConversation.cost += c.total;
-      report.mainConversation.requests += 1;
-      f.promptTokens += promptTokens;
-      if (promptTokens > 200_000) {
-        report.context.requestsOver200k += 1;
-        report.context.costOver200k += c.total;
-      }
-      const kind = turnKind(f.turn, f.entrypoint);
-      const h = f.turn.hash ? f.hashes.get(f.turn.hash) : null;
-      if (kind === 'human') add(report.turns, 'human', c.total);
-      else {
-        report.turns.automated.cost += c.total;
-        report.turns.automated.requests += 1;
-        add(report.turns.automated.byKind, kind, c.total);
-      }
-      if (h) {
-        h.cost += c.total;
-        h.requests += 1;
-        if (kind === 'human') {
-          h.humanCost += c.total;
-          h.humanRequests += 1;
-        }
-        if (kind !== 'human' || f.turn.scheduled) h.machine = true;
-      }
-    } else {
-      const lens = report.agents[t.kind];
-      lens.cost += c.total;
-      lens.requests += 1;
-      lens.components.cacheRead += c.cacheRead;
-      lens.components.cacheWrite += c.cacheWrite5m + c.cacheWrite1h;
-      lens.components.output += c.output;
-      lens.components.input += c.input;
-      lens.promptTokens += promptTokens;
-      add(lens.byType, label(meta?.agentType, 48), c.total);
-      add(lens.byModel, c.priceKey, c.total);
-    }
+  } else {
+    const lens = report.agents[t.kind];
+    lens.cost += c.total;
+    lens.requests += 1;
+    lens.components.cacheRead += c.cacheRead;
+    lens.components.cacheWrite += c.cacheWrite5m + c.cacheWrite1h;
+    lens.components.output += c.output;
+    lens.components.input += c.input;
+    lens.promptTokens += promptTokens;
+    add(lens.byType, label(meta?.agentType, 48), c.total);
+    add(lens.byModel, modelKey(c), c.total);
   }
 }
 
@@ -299,7 +328,7 @@ function finishTranscript(t, f, report, sessionRows) {
   }
   sessionRows.push({
     project: t.project,
-    sessionId: t.sessionId,
+    sessionId: t.sessionId ?? path.basename(t.file, '.jsonl'),
     entrypoint: f.entrypoint || 'unknown',
     cost: f.cost,
     requests: f.requests,

@@ -65,7 +65,7 @@ test('findings past the sixth are named, not silently dropped', async () => {
   const md = renderMarkdown(r, many);
   assert.match(md, /### 6\. Finding 5/);
   assert.ok(!md.includes('### 7.'));
-  assert.match(md, /Also above its threshold: Finding 6 \(2\.0%\), Finding 7 \(1\.0%\)/);
+  assert.match(md, /Also above its threshold: Finding 6 \(2\.0%, \$2\.00\); Finding 7 \(1\.0%, \$1\.00\)/);
 });
 
 test('an empty window says so and where it looked', async () => {
