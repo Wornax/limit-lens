@@ -73,7 +73,13 @@ const serialize = (data, f) => {
 
 // Write settings; returns the backup path of the previous file, or null when there was none.
 export function writeSettings(file, data, { backupDir, format = DEFAULT_FORMAT }) {
-  // A symlinked settings file stays a symlink: write to its target.
+  return writeFileSafely(file, serialize(data, format), { backupDir, backupName: 'settings', backupExt: '.json' });
+}
+
+// Write any user file the same way: back up the previous file, write atomically, follow a symlinked file
+// to its target, keep its mode, and leave nothing behind on failure. Returns the backup path, or null.
+export function writeFileSafely(file, content, { backupDir, backupName, backupExt }) {
+  // A symlinked file stays a symlink: write to its target.
   let target = file;
   try {
     target = fs.realpathSync(file);
@@ -85,14 +91,14 @@ export function writeSettings(file, data, { backupDir, format = DEFAULT_FORMAT }
   if (fs.existsSync(target)) {
     mode = fs.statSync(target).mode & 0o777;
     fs.mkdirSync(backupDir, { recursive: true });
-    backup = path.join(backupDir, `settings-${new Date().toISOString().replace(/[:.]/g, '-')}.json`);
+    backup = path.join(backupDir, `${backupName}-${new Date().toISOString().replace(/[:.]/g, '-')}${backupExt}`);
     fs.copyFileSync(target, backup);
   }
   fs.mkdirSync(path.dirname(target), { recursive: true });
   const tmp = `${target}.limit-lens-${process.pid}.tmp`;
   try {
     if (mode !== null) fs.accessSync(target, fs.constants.W_OK);
-    fs.writeFileSync(tmp, serialize(data, format), mode === null ? undefined : { mode });
+    fs.writeFileSync(tmp, content, mode === null ? undefined : { mode });
     fs.renameSync(tmp, target);
   } catch (e) {
     for (const f of [tmp, backup]) {

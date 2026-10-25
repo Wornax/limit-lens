@@ -9,12 +9,13 @@ import { habits } from './lib/fixes.mjs';
 import { metrics, renderCompare } from './lib/compare.mjs';
 import { currentPlan, applyFixes, revertExperiment, findExperiment, planHistory, settingsPath } from './lib/experiments.mjs';
 import { userConfigDir } from './lib/settings.mjs';
-import { renderMarkdown, renderPlan, diagnosis, questions, contributorName, anonymizer, clean, UUID } from './lib/report.mjs';
+import { renderMarkdown, renderPlan, renderAnalyze, diagnosis, questions, contributorName, anonymizer, clean, UUID } from './lib/report.mjs';
 
 const USAGE = `Usage: limit-lens [command] [options]
 
   limit-lens [--days N] [--project NAME] [--anonymize] [--json]   report where your limit goes
-  limit-lens plan [--json]                                         list the fixes you can apply as settings
+  limit-lens analyze [--json]                                      the report, then the fixes to ask about and other suggestions
+  limit-lens plan [--json]                                         list the fixes you can apply
   limit-lens apply FIX_ID [FIX_ID ...]                             apply the chosen fixes (backs up settings first)
   limit-lens compare [--experiment ID]                             compare usage before and after the last change
   limit-lens revert [--experiment ID]                              undo the last change
@@ -27,7 +28,7 @@ Options:
   --config-dir PATH  Claude config folder (default: CLAUDE_CONFIG_DIR, ~/.claude and ~/.config/claude)
 `;
 
-const SUBCOMMANDS = new Set(['plan', 'apply', 'compare', 'revert']);
+const SUBCOMMANDS = new Set(['analyze', 'plan', 'apply', 'compare', 'revert']);
 const FIX_ID = /^[a-z0-9][a-z0-9.-]{0,80}$/;
 
 // Agent types Claude Code ships with; any other name is the user's own and is hidden by --anonymize.
@@ -130,24 +131,34 @@ try {
     } else {
       out(renderMarkdown(report, found, { anonymize: opts.anonymize, searched: projectsDirs }));
     }
-  } else if (opts.command === 'plan' || opts.command === 'apply') {
+  } else if (opts.command === 'analyze' || opts.command === 'plan' || opts.command === 'apply') {
+    // Fixes are judged on the last 7 days, the same window compare measures against.
     const report = await analyze({ projectsDirs, now, days: 7, securityLog });
-    if (opts.command === 'plan') {
+    if (opts.command !== 'apply') {
       const fixes = currentPlan(settingsDir, report);
       const found = findings(report);
       const plan = { settingsFile: settingsPath(settingsDir), fixes, habits: habits(report), ...planHistory(settingsDir) };
       if (opts.json) {
-        // Names from disk are cleaned, as in the Markdown plan; the full report stays out of it.
+        // Names from disk are cleaned, as in the Markdown; plan leaves the full report out.
         for (const f of fixes) for (const c of f.contributors) c.name = contributorName(c);
-        out(JSON.stringify({ diagnosis: diagnosis(report, found), questions: questions(fixes).map((q) => ({ title: q.title, group: q.group, options: q.options.map((f) => f.id) })), ...plan }, null, 2) + '\n');
+        const extra = { diagnosis: diagnosis(report, found), questions: questions(fixes).map((q) => ({ title: q.title, group: q.group, options: q.options.map((f) => f.id) })) };
+        if (opts.command === 'analyze') sanitizeJson(report, false);
+        out(JSON.stringify(opts.command === 'analyze' ? { report, findings: found, ...extra, ...plan } : { ...extra, ...plan }, null, 2) + '\n');
       } else {
-        out(renderPlan({ report, found, ...plan }));
+        out(opts.command === 'analyze' ? renderAnalyze({ report, found, searched: projectsDirs, ...plan }) : renderPlan({ report, found, ...plan }));
       }
     } else {
       const exp = applyFixes({ configDir: settingsDir, fixIds: opts.ids, report, now });
-      const lines = [`Applied ${exp.changes.length} fix${exp.changes.length === 1 ? '' : 'es'} to \`${exp.settingsFile}\` (experiment \`${exp.id}\`):`, ''];
-      for (const c of exp.changes) lines.push(`- \`${c.fixId}\`: \`${c.path.join('.')}\` ${c.hadKey ? `\`${JSON.stringify(c.before)}\`` : '(not set)'} -> \`${JSON.stringify(c.after)}\``);
-      lines.push('', exp.backup ? `Backup of the previous file: \`${exp.backup}\`.` : 'There was no settings file before; it was created.', 'New settings apply to new sessions. Compare after a few days of normal use; revert at any time.');
+      const lines = [`Applied ${exp.changes.length} fix${exp.changes.length === 1 ? '' : 'es'} (experiment \`${exp.id}\`):`, ''];
+      for (const c of exp.changes) {
+        lines.push(c.kind === 'memory'
+          ? `- \`${c.fixId}\`: added the model-routing rule to \`${c.file}\``
+          : `- \`${c.fixId}\`: \`${c.path.join('.')}\` in \`${exp.settingsFile}\`: ${c.hadKey ? `\`${JSON.stringify(c.before)}\`` : '(not set)'} -> \`${JSON.stringify(c.after)}\``);
+      }
+      lines.push('');
+      if (exp.changes.some((c) => c.kind !== 'memory')) lines.push(exp.backup ? `Backup of the previous settings file: \`${exp.backup}\`.` : 'There was no settings file before; it was created.');
+      if (exp.memoryBackup) lines.push(`Backup of the previous CLAUDE.md: \`${exp.memoryBackup}\`.`);
+      lines.push('New settings and rules apply to new sessions. Compare after a few days of normal use; revert at any time.');
       out(lines.join('\n') + '\n');
     }
   } else if (opts.command === 'compare') {
@@ -159,11 +170,17 @@ try {
       out(renderCompare(exp, after));
     }
   } else if (opts.command === 'revert') {
-    const { experiment, restored, skipped, backup } = revertExperiment({ configDir: settingsDir, now, id: opts.experiment });
-    const lines = [`Reverted experiment \`${experiment.id}\` in \`${experiment.settingsFile}\`:`, ''];
-    for (const c of restored) lines.push(`- \`${c.path.join('.')}\` restored to ${c.hadKey ? `\`${JSON.stringify(c.before)}\`` : '(not set)'}`);
-    for (const c of skipped) lines.push(`- \`${c.path.join('.')}\` left as is: it was changed since the fix was applied`);
-    if (backup) lines.push('', `Backup of the file before reverting: \`${backup}\`.`);
+    const { experiment, restored, skipped, backup, memoryBackup } = revertExperiment({ configDir: settingsDir, now, id: opts.experiment });
+    const lines = [`Reverted experiment \`${experiment.id}\`:`, ''];
+    for (const c of restored) {
+      lines.push(c.kind === 'memory' ? `- \`${c.file}\`: removed the model-routing rule` : `- \`${c.path.join('.')}\` restored to ${c.hadKey ? `\`${JSON.stringify(c.before)}\`` : '(not set)'} in \`${experiment.settingsFile}\``);
+    }
+    for (const c of skipped) {
+      lines.push(c.kind === 'memory' ? `- \`${c.file}\`: the model-routing rule was left as is: it was edited since it was added` : `- \`${c.path.join('.')}\` left as is: it was changed since the fix was applied`);
+    }
+    if (backup || memoryBackup) lines.push('');
+    if (backup) lines.push(`Backup of the settings file before reverting: \`${backup}\`.`);
+    if (memoryBackup) lines.push(`Backup of CLAUDE.md before reverting: \`${memoryBackup}\`.`);
     out(lines.join('\n') + '\n');
   }
 } catch (e) {

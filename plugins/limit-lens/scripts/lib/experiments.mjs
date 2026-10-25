@@ -1,14 +1,17 @@
-// Apply chosen fixes to the user settings file and keep a record of each change, so it can be
-// measured (compare) and undone (revert). State: <config dir>/limit-lens/experiments.json.
+// Apply chosen fixes to the user settings file (and the model-routing rule to the user's CLAUDE.md) and
+// keep a record of each change, so it can be measured (compare) and undone (revert).
+// State: <config dir>/limit-lens/experiments.json.
 // A damaged state file is never overwritten: apply and revert refuse to run until it is fixed.
 import fs from 'node:fs';
 import path from 'node:path';
-import { applicableFixes } from './fixes.mjs';
+import { applicableFixes, routingFix } from './fixes.mjs';
 import { metrics } from './compare.mjs';
-import { readSettings, writeSettings, getPath, setPath, deletePath } from './settings.mjs';
+import { readSettings, writeSettings, writeFileSafely, getPath, setPath, deletePath } from './settings.mjs';
+import { memoryPath, readMemory, hasRouting, addRouting, removeRouting, ROUTING_RULE } from './memory.mjs';
 
 export const stateDir = (configDir) => path.join(configDir, 'limit-lens');
 const stateFile = (configDir) => path.join(stateDir(configDir), 'experiments.json');
+const backupDir = (configDir) => path.join(stateDir(configDir), 'backups');
 export const settingsPath = (configDir) => path.join(configDir, 'settings.json');
 
 export function loadState(configDir) {
@@ -54,7 +57,9 @@ export function planHistory(configDir) {
     const undo = target && {
       id: target.id,
       appliedAt: target.appliedAt,
-      changes: target.changes.map((c) => ({ fixId: c.fixId, path: c.path, restore: c.hadKey ? c.before : null, hadKey: c.hadKey })),
+      changes: target.changes.map((c) => (c.kind === 'memory'
+        ? { fixId: c.fixId, kind: 'memory', file: c.file }
+        : { fixId: c.fixId, path: c.path, restore: c.hadKey ? c.before : null, hadKey: c.hadKey })),
     };
     return { last: experiments[experiments.length - 1] || null, undo: undo || null, warning: null };
   } catch (e) {
@@ -62,10 +67,22 @@ export function planHistory(configDir) {
   }
 }
 
-// The fixes that apply now, given the report and the current settings file.
+// The fixes that apply now, given the report, the current settings file and CLAUDE.md: the routing rule
+// first, unless CLAUDE.md already routes or cannot be read.
 export function currentPlan(configDir, report) {
   const { data } = readSettings(settingsPath(configDir));
-  return applicableFixes(report, data);
+  return [routingOffer(configDir, report), ...applicableFixes(report, data)].filter(Boolean);
+}
+
+function routingOffer(configDir, report) {
+  const file = memoryPath(configDir);
+  let memory;
+  try {
+    memory = readMemory(file);
+  } catch {
+    return null;
+  }
+  return hasRouting(memory.text) ? null : routingFix(report, { file, rule: ROUTING_RULE });
 }
 
 export function applyFixes({ configDir, fixIds, report, now }) {
@@ -73,7 +90,7 @@ export function applyFixes({ configDir, fixIds, report, now }) {
   const state = loadState(configDir); // refuse early if the history is damaged
   const file = settingsPath(configDir);
   const { data, format } = readSettings(file);
-  const available = new Map(applicableFixes(report, data).map((f) => [f.id, f]));
+  const available = new Map(currentPlan(configDir, report).map((f) => [f.id, f]));
   const chosen = [...new Set(fixIds)].map((id) => {
     const fix = available.get(id);
     if (!fix) throw new Error(`"${id}" is not an applicable fix right now; run the plan again to see the current list.`);
@@ -85,18 +102,41 @@ export function applyFixes({ configDir, fixIds, report, now }) {
     if (byGroup.has(fix.group)) throw new Error(`"${byGroup.get(fix.group)}" and "${fix.id}" are alternatives; choose one.`);
     byGroup.set(fix.group, fix.id);
   }
-  const changes = chosen.map((fix) => {
+  const settingsFixes = chosen.filter((fix) => fix.target !== 'memory');
+  const memoryFix = chosen.find((fix) => fix.target === 'memory');
+  const changes = settingsFixes.map((fix) => {
     const before = getPath(data, fix.path);
     setPath(data, fix.path, fix.value);
     return { fixId: fix.id, path: fix.path, before: before === undefined ? null : before, hadKey: before !== undefined, after: fix.value };
   });
-  const backup = writeSettings(file, data, { backupDir: path.join(stateDir(configDir), 'backups'), format });
+  // CLAUDE.md first; if the settings write then fails, CLAUDE.md is put back as it was.
+  let memoryBackup = null;
+  let memory = null;
+  if (memoryFix) {
+    memory = readMemory(memoryFix.file);
+    const { text, sep } = addRouting(memory.text, memory.eol);
+    memoryBackup = writeFileSafely(memoryFix.file, text, { backupDir: backupDir(configDir), backupName: 'CLAUDE', backupExt: '.md' });
+    changes.unshift({ fixId: memoryFix.id, kind: 'memory', file: memoryFix.file, eol: memory.eol, sep, hadFile: memory.exists });
+  }
+  let backup = null;
+  if (settingsFixes.length) {
+    try {
+      backup = writeSettings(file, data, { backupDir: backupDir(configDir), format });
+    } catch (e) {
+      if (memory) {
+        if (memory.exists) writeFileSafely(memoryFix.file, memory.text, { backupDir: backupDir(configDir), backupName: 'CLAUDE', backupExt: '.md' });
+        else fs.unlinkSync(memoryFix.file);
+      }
+      throw e;
+    }
+  }
   const at = new Date(now);
   const experiment = {
     id: `exp-${at.toISOString().replace(/[-:]/g, '').replace(/\..*/, '')}`,
     appliedAt: at.toISOString(),
     settingsFile: file,
     backup,
+    memoryBackup,
     changes,
     baseline: metrics(report),
   };
@@ -115,7 +155,19 @@ export function revertExperiment({ configDir, now, id = null }) {
   const { data, format } = readSettings(file);
   const restored = [];
   const skipped = [];
+  let memoryBackup = null;
   for (const c of exp.changes) {
+    if (c.kind === 'memory') {
+      const memory = readMemory(c.file);
+      const text = removeRouting(memory.text, c.eol, c.sep);
+      if (text === null) {
+        skipped.push(c);
+        continue;
+      }
+      memoryBackup = writeFileSafely(c.file, text, { backupDir: backupDir(configDir), backupName: 'CLAUDE', backupExt: '.md' });
+      restored.push(c);
+      continue;
+    }
     const current = getPath(data, c.path);
     if (current !== c.after) {
       skipped.push(c);
@@ -125,8 +177,8 @@ export function revertExperiment({ configDir, now, id = null }) {
     else deletePath(data, c.path);
     restored.push(c);
   }
-  const backup = restored.length ? writeSettings(file, data, { backupDir: path.join(stateDir(configDir), 'backups'), format }) : null;
+  const backup = restored.some((c) => c.kind !== 'memory') ? writeSettings(file, data, { backupDir: backupDir(configDir), format }) : null;
   exp.revertedAt = new Date(now).toISOString();
   saveState(configDir, state);
-  return { experiment: exp, restored, skipped, backup };
+  return { experiment: exp, restored, skipped, backup, memoryBackup };
 }

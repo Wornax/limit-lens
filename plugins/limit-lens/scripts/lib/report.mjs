@@ -76,7 +76,9 @@ function fixLines(f, indent) {
   const pad = ' '.repeat(indent);
   const lines = [
     `${pad}- ${f.kind === 'cost-only' ? 'Cost only' : 'Changes how Claude works for you'}: ${f.effect}`,
-    `${pad}- Change: \`${f.path.join('.')}\` ${show(f.current)} -> ${show(f.value)}`,
+    f.target === 'memory'
+      ? `${pad}- Change: add to \`${f.file}\`: "${f.rule}"`
+      : `${pad}- Change: \`${f.path.join('.')}\` ${show(f.current)} -> ${show(f.value)}`,
     `${pad}- Why: ${f.why}`,
   ];
   const kinds = [...new Set((f.contributors || []).map((c) => c.kind))];
@@ -93,13 +95,10 @@ function fixLines(f, indent) {
   return lines;
 }
 
-// The fix plan the `fix` skill walks through with the user: the diagnosis first, then one question
-// per fix or per group of alternatives.
-export function renderPlan({ report, found = [], fixes, habits, settingsFile, last, undo, warning }) {
-  const lines = ['# limit-lens: fixes you can apply', ''];
-  if (report) {
-    const d = diagnosis(report, found);
-    lines.push(
+function diagnosisLines(report, found) {
+  const lines = [];
+  const d = diagnosis(report, found);
+  lines.push(
       '## What is eating your limit',
       '',
       `API-equivalent spend ${usd(d.spend)} in the last ${d.days} days${d.outside ? `, plus ${usd(d.outside)} of plugin calls outside transcripts` : ''} (list prices; on a subscription, read dollars as a share of your limit).`,
@@ -107,11 +106,14 @@ export function renderPlan({ report, found = [], fixes, habits, settingsFile, la
     );
     for (const l of d.lenses) lines.push(`- ${l.title}: ${pct(l.cost, d.spend)} (${usd(l.cost)})`);
     if (d.projects.length) lines.push(`- Biggest projects: ${d.projects.map((p) => `${p.name} ${pct(p.cost, d.spend)}`).join(', ')}`);
-    if (d.lenses.length > 1) lines.push('', 'These overlap: one request can count under several headings.');
-    lines.push('');
-  }
-  lines.push(`Settings file: \`${settingsFile}\` (backed up before any change; new settings apply to new sessions).`, '');
-  if (!fixes.length) lines.push('No settings fix applies right now: either nothing crossed its threshold, or your settings already have these values.', '');
+  if (d.lenses.length > 1) lines.push('', 'These overlap: one request can count under several headings.');
+  lines.push('');
+  return lines;
+}
+
+function questionLines(fixes, settingsFile) {
+  const lines = [`Settings file: \`${settingsFile}\` (backed up before any change; new settings apply to new sessions).`, ''];
+  if (!fixes.length) lines.push('No fix applies right now: either nothing crossed its threshold, or your settings already have these values.', '');
   questions(fixes).forEach((q, i) => {
     lines.push(`### Question ${i + 1}: ${q.title}`, '');
     if (q.options.length === 1) {
@@ -124,18 +126,63 @@ export function renderPlan({ report, found = [], fixes, habits, settingsFile, la
   if (fixes.filter((f) => f.savings?.weekly != null).length > 1) {
     lines.push('Each estimate assumes that fix alone; fixes can save on the same requests, so the estimates do not add up.', '');
   }
-  if (habits.length) lines.push('', '## Habits (only the user can do these)', '', ...habits.map((h) => `- ${h}`));
+  return lines;
+}
+
+function historyLines({ last, undo, warning }) {
+  const lines = [];
   if (last) {
     const fixesList = last.changes.map((c) => `\`${c.fixId}\``).join(', ');
     lines.push('', '## Last experiment', '', `- \`${last.id}\`, applied ${last.appliedAt.slice(0, 16).replace('T', ' ')} UTC: ${fixesList}${last.revertedAt ? ' (reverted)' : ''}. Compare it after a few days of normal use.`);
   }
   if (undo) {
     lines.push('', `## Revert would restore (experiment \`${undo.id}\`)`, '');
-    for (const c of undo.changes) lines.push(`- \`${c.path.join('.')}\` -> ${c.hadKey ? show(c.restore) : '(removed)'}`);
+    for (const c of undo.changes) {
+      lines.push(c.kind === 'memory' ? `- \`${c.file}\`: the model-routing rule is removed` : `- \`${c.path.join('.')}\` -> ${c.hadKey ? show(c.restore) : '(removed)'}`);
+    }
     lines.push('', `To undo exactly this, run revert with \`--experiment ${undo.id}\`.`);
   }
   if (warning) lines.push('', `Warning: ${warning}`);
+  return lines;
+}
+
+// The fix plan: the diagnosis first, then one question per fix or per group of alternatives.
+export function renderPlan({ report, found = [], fixes, habits, settingsFile, last, undo, warning }) {
+  const lines = ['# limit-lens: fixes you can apply', ''];
+  if (report) lines.push(...diagnosisLines(report, found));
+  lines.push(...questionLines(fixes, settingsFile));
+  if (habits.length) lines.push('', '## Habits (only the user can do these)', '', ...habits.map((h) => `- ${h}`));
+  lines.push(...historyLines({ last, undo, warning }));
   return lines.join('\n') + '\n';
+}
+
+// A finding's suggestion that a question already asks, by the fix that asks it (id prefix).
+const ASKED = [
+  ['subagent-model-sonnet', /"CLAUDE_CODE_SUBAGENT_MODEL": "sonnet"/],
+  ['effort-high-', /^Use `\/effort high`/],
+  ['autocompact-300k', /"autoCompactWindow": 300000/],
+  ['default-model-sonnet', /^Start routine sessions with `\/model sonnet`/],
+  ['model-routing-rule', /^Let Claude pick a model per task/],
+  ['security-', /SECURITY_REVIEW_MODEL=/],
+  ['fast-mode-off', /turn it off with `\/fast`/],
+];
+
+function suggestionLines(found, fixes) {
+  const asked = (text) => ASKED.some(([id, re]) => re.test(text) && fixes.some((f) => f.id.startsWith(id)));
+  const groups = found.slice(0, MAX_SHOWN).map((f) => [f.title, f.fixes.filter((x) => !asked(x))]).filter(([, xs]) => xs.length);
+  if (!groups.length) return [];
+  const lines = ['## Other suggestions', '', 'Things only the user can do: slash commands to type, habits, and changes to their own agents and skills.', ''];
+  for (const [title, xs] of groups) lines.push(`**${title}**`, ...xs.map((x) => `- ${x}`), '');
+  return lines;
+}
+
+// `limit-lens analyze`: the report, the questions (the routing rule first), the suggestions no question
+// covers, and the history of applied changes.
+export function renderAnalyze({ report, found, fixes, settingsFile, last, undo, warning, searched = [] }) {
+  const head = renderMarkdown(report, found, { searched, withFixes: false });
+  if (!report.totals.requests) return head;
+  const lines = ['', '## Questions', '', ...questionLines(fixes, settingsFile), ...suggestionLines(found, fixes), ...historyLines({ last, undo, warning })];
+  return head + lines.join('\n') + '\n';
 }
 
 function historyNote(r) {
@@ -143,7 +190,7 @@ function historyNote(r) {
   return `Your transcripts on this computer start on ${since}. Claude Code deletes transcripts after \`cleanupPeriodDays\` (30 days by default), so a window longer than that cannot be filled; raise it in settings.json to keep more history.`;
 }
 
-export function renderMarkdown(r, found, { anonymize = false, searched = [] } = {}) {
+export function renderMarkdown(r, found, { anonymize = false, searched = [], withFixes = true } = {}) {
   const name = anonymizer(anonymize, { shorten: true });
   const total = r.totals.cost;
   const lines = [`# limit-lens: last ${r.window.days} day${r.window.days === 1 ? '' : 's'}`, ''];
@@ -193,6 +240,8 @@ export function renderMarkdown(r, found, { anonymize = false, searched = [] } = 
     `- **By source:** main conversation ${pct(r.mainConversation.cost, total)} (you ${pct(r.turns.human.cost, total)}, automated ${pct(r.turns.automated.cost, total)}), subagents ${pct(sub.cost, total)}, workflow agents ${pct(wf.cost, total)}`,
     `- **Started from:** ${topEntries(r.byEntrypoint, total, 4, entrypointName)}`,
   );
+  const projects = Object.entries(r.byProject || {}).filter(([, b]) => b.cost > 0).sort((a, b) => b[1].cost - a[1].cost).slice(0, 3);
+  if (projects.length) lines.push(`- **Biggest projects:** ${projects.map(([p, b]) => `${clean(name(p))} ${pct(b.cost, total)}`).join(', ')}`);
   if (r.outside.cost) lines.push(`- **Plugin calls outside transcripts:** ${usd(r.outside.cost)} (not in the total above)`);
   lines.push('');
 
@@ -206,7 +255,7 @@ export function renderMarkdown(r, found, { anonymize = false, searched = [] } = 
   found.slice(0, MAX_SHOWN).forEach((f, i) => {
     lines.push(`### ${i + 1}. ${f.title} (${heading(f)})`, '');
     for (const e of f.evidence) lines.push(`- ${e}`);
-    if (f.fixes.length) {
+    if (withFixes && f.fixes.length) {
       lines.push('', 'Fixes:');
       f.fixes.forEach((x, j) => lines.push(`${j + 1}. ${x}`));
     }

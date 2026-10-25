@@ -1,6 +1,7 @@
 ---
 name: report
-description: Show where your Claude Code usage limit goes (re-reading context, subagents, effort, models, cache rebuilds, loops, plugins) and the fix for each. Use when the user keeps hitting Claude Code usage limits, runs out of tokens fast, or asks why their Claude Code usage is high. Not for the API costs of apps the user is building.
+description: A read-only report of where your Claude Code usage limit goes, with options to share it (--days N, --project NAME, --anonymize). To act on it, use /limit-lens:analyze.
+disable-model-invocation: true
 argument-hint: "[--days N] [--project NAME] [--anonymize]"
 allowed-tools:
   - Bash(node "${CLAUDE_PLUGIN_ROOT}/scripts/limit-lens.mjs")
@@ -17,10 +18,8 @@ The script reads this machine's Claude Code transcripts locally and prints a sho
 
 Present the report:
 
-1. Answer in the user's language. Open with the spend line and say in one sentence that these are API list-price equivalents, not a bill on a subscription. Then show the "Where it goes" table and the two or three findings that cover the most spend, with their numbers, in plain words.
-2. For each finding, give its fixes. Keep setting names, values and commands verbatim (they were checked against the Claude Code docs; do not invent others) and translate only the explanation around them.
+1. Answer in the user's language. Open with the spend line and say in one sentence that these are API list-price equivalents, not a bill on a subscription. Then show the "Where it goes" lines and the two or three findings that cover the most spend, with their numbers, in plain words.
+2. For each finding, give its fixes. Keep setting names, values and commands verbatim (they were checked against the Claude Code docs) and translate only the explanation around them.
 3. If the report has an "Also above its threshold" line, name those findings in one sentence. End with the "Not counted" items, one short line each.
-4. Slash commands in the fixes (`/clear`, `/compact`, `/model`, `/effort`, `/fast`, ...) are for the user to type: say so, and do not offer to run them. For settings, offer `/limit-lens:fix`, which asks about each one, applies only the chosen ones with a backup, and can compare before and after. Do not edit settings files from this skill.
+4. Slash commands in the fixes (`/clear`, `/compact`, `/model`, `/effort`, `/fast`, ...) are the user's to type: say so. This skill only reads; for settings and model routing, offer `/limit-lens:analyze`, which asks about each fix, applies only the chosen ones with a backup, and can compare before and after.
 5. If no usage was found, say what the report says about where it looked.
-
-To apply the settings fixes with the user's approval and measure the result later, use the `fix` skill in this plugin (`/limit-lens:fix`). To choose models for future work, use the `model-routing` skill.

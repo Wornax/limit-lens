@@ -2,11 +2,14 @@
 
 **See where your Claude Code usage limit goes, then fix it.**
 
-limit-lens is a Claude Code plugin. Run `/limit-lens:report` and a small local script reads your session transcripts, works out what each request would cost at API list prices, and tells you which habits and settings eat your limit, with the exact fix for each. Finding out costs no tokens: the script does the math, and Claude only reads the short report.
+limit-lens is a Claude Code plugin with one command, `/limit-lens:analyze`:
 
-Then run `/limit-lens:fix`: Claude asks you about each fix that can be applied as a setting, applies only the ones you choose (with a backup), and a few days later `/limit-lens:fix compare` shows your usage before and after.
+1. **Report.** A small local script reads your session transcripts, works out what each request would cost at API list prices, and shows what eats your limit: models, effort, agents, re-read context, loops, plugins, and the biggest projects. Finding out costs few tokens: the script does the math, and Claude only reads the short result.
+2. **Model routing.** Claude asks whether to turn on `model-routing`, a skill shipped with the plugin that has Claude pick Haiku, Sonnet or Opus (and an effort level) for each agent it starts.
+3. **Fixes.** Claude asks about each settings fix that would help you, one question at a time, and applies only the ones you choose, with a backup.
+4. **Other suggestions.** The habits and commands only you can adopt.
 
-It also ships `model-routing`, a skill that teaches Claude to pick Haiku, Sonnet or Opus (and an effort level) for each piece of delegated work.
+A few days later, `/limit-lens:analyze compare` shows your usage before and after, and `/limit-lens:analyze revert` undoes the change.
 
 ## What you get
 
@@ -34,23 +37,24 @@ Fixes:
 
 Each finding lists fixes that use real settings and commands, checked against the [Claude Code docs](https://code.claude.com/docs/en/costs), with links.
 
-## Fix, then measure
+## Analyze, fix, then measure
 
-`/limit-lens:fix` turns the report into changes you approve one by one:
+`/limit-lens:analyze` turns the report into changes you approve one by one:
 
-1. It opens with what is eating your limit: the biggest lenses and the biggest projects.
-2. Then it lists the fixes that apply to you as settings. Each one shows:
+1. It opens with what is eating your limit: where the spend goes, the biggest projects, and the findings with their numbers.
+2. Then it asks about the fixes that apply to you. The first is usually model routing: a three-line block in your `CLAUDE.md` (`<config dir>/CLAUDE.md`, the instructions Claude Code loads in every session) that makes Claude read the `model-routing` guide before it starts a subagent or workflow agent. The rest are settings. Each fix shows:
    - whether it is "cost only" or "changes how Claude works for you", and how;
-   - the setting, its current value and the new value, and why;
+   - the change (the setting with its current and new value, or the line added to `CLAUDE.md`), and why;
    - the projects, agent types, sessions or plugin reviews behind it, when the transcripts can tell;
    - the weekly saving it estimates at list prices, and how. The estimates assume one fix at a time and do not add up. Effort and auto-compaction say they cannot be estimated in advance; compare measures them.
 
    A fix is offered only when your usage shows the problem and the change would take effect: not when your user settings or environment already have that value, outrank it, or switch the feature off. Project and managed settings files also outrank the user file, and the plan does not read them.
 3. Claude asks one question per fix, with "Skip" first and "Show details" next. Alternatives, such as running the security-guidance per-turn review on Sonnet or dropping it, share one question, and the script refuses both together.
-4. The script, not Claude, writes the chosen keys into your user `settings.json`, after backing it up. The apply command also goes through Claude Code's own permission prompt, so you approve twice.
-5. After a few days of normal use, `/limit-lens:fix compare` shows spend per active day and per request, and the share of each lens, before and after. `/limit-lens:fix revert` puts back only the keys it changed, and leaves alone any key you changed since.
+4. The script, not Claude, writes the chosen changes into your user `settings.json` and `CLAUDE.md`, after backing them up. The apply command also goes through Claude Code's own permission prompt, so you approve twice.
+5. It ends with the other suggestions: habits such as `/clear` and `/compact`, and changes to your own agents and skills. Slash commands are yours to type.
+6. After a few days of normal use, `/limit-lens:analyze compare` shows spend per active day and per request, and the share of each lens, before and after. `/limit-lens:analyze revert` puts back only what it changed: the settings keys, and the routing block in `CLAUDE.md`. It leaves alone anything you changed since.
 
-Settings it can apply: `env.CLAUDE_CODE_SUBAGENT_MODEL`, per-model `effortLevel` under `modelSettings`, `autoCompactWindow`, `crossSessionInbound`, `fastMode`, `model`, and the security-guidance plugin's model variables. Habits such as `/clear` and `/compact` are listed for you to adopt; slash commands are yours to type. Records and backups live in `<config dir>/limit-lens/`.
+What it can change: the routing block in `CLAUDE.md`; in `settings.json`, `env.CLAUDE_CODE_SUBAGENT_MODEL`, per-model `effortLevel` under `modelSettings`, `autoCompactWindow`, `crossSessionInbound`, `fastMode`, `model`, and the security-guidance plugin's model variables. Records and backups live in `<config dir>/limit-lens/`.
 
 ## Install
 
@@ -65,22 +69,22 @@ Requires Node.js 18 or later on your `PATH`. No other dependencies.
 
 | Command | What it does |
 | :- | :- |
-| `/limit-lens:report` | Report on the last 7 days |
+| `/limit-lens:analyze` | Report on the last 7 days, then ask about model routing and each fix, and apply the ones you choose |
+| `/limit-lens:analyze compare` | Compare usage before and after the last change |
+| `/limit-lens:analyze revert` | Undo the last change |
+| `/limit-lens:report` | Report only, nothing asked or changed |
 | `/limit-lens:report --days 30` | Longer window (1 to 90 days; Claude Code deletes transcripts after `cleanupPeriodDays`, 30 days by default) |
 | `/limit-lens:report --project api` | Only projects whose folder name contains `api` |
 | `/limit-lens:report --anonymize` | Replace project folder names, so you can share the report |
-| `/limit-lens:fix` | Walk through the settings fixes and apply the ones you choose |
-| `/limit-lens:fix compare` | Compare usage before and after the last change |
-| `/limit-lens:fix revert` | Undo the last change |
 | `/limit-lens:model-routing` | Load the model-routing guide (Claude also loads it on its own before delegating) |
 
-Run the report in a fresh session: it adds about 1,500 tokens of context. You can also run the script directly, outside Claude Code:
+Claude runs `/limit-lens:analyze` on its own when you ask why you keep hitting your limit; `/limit-lens:report` runs only when you type it. Run either in a fresh session: the analysis adds a few thousand tokens of context. You can also run the script directly, outside Claude Code:
 
 ```bash
 node plugins/limit-lens/scripts/limit-lens.mjs --days 7
 node plugins/limit-lens/scripts/limit-lens.mjs --json > usage.json
-node plugins/limit-lens/scripts/limit-lens.mjs plan
-node plugins/limit-lens/scripts/limit-lens.mjs apply subagent-model-sonnet
+node plugins/limit-lens/scripts/limit-lens.mjs analyze
+node plugins/limit-lens/scripts/limit-lens.mjs apply model-routing-rule subagent-model-sonnet
 node plugins/limit-lens/scripts/limit-lens.mjs compare
 ```
 
@@ -110,6 +114,7 @@ Lenses overlap: a subagent's cache reads count under both "Re-reading context" a
 ## Privacy
 
 - No network calls. Everything stays on your machine.
+- It writes only what you approve, through the script: keys in your user `settings.json` and the routing block in your user `CLAUDE.md`, each backed up first.
 - The report contains numbers, project folder names and short session ids (`--json` prints full session ids). It never contains prompt, response or tool output text. `--anonymize` replaces folder names with `project-1`, `project-2`, and so on, and hides custom agent names and searched paths.
 - Names read from disk are reduced to plain characters before they reach the report, so a hostile file or folder name cannot inject text into the conversation.
 

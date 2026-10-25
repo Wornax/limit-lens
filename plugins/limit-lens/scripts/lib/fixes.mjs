@@ -1,6 +1,7 @@
 // Fixes that can be applied as user settings, offered only when the report's evidence supports them
 // and the setting is not already at that value. Keys are the documented ones listed in docs/plan.md
-// (v0.2 decision 2); add a fix only with a docs link that confirms its key and value.
+// (v0.2 decision 2); add a fix only with a docs link that confirms its key and value. One more fix,
+// the model-routing rule, goes in the user's CLAUDE.md instead (target: 'memory', see memory.mjs).
 //
 // Each fix carries what the user needs to decide:
 // - contributors: the biggest projects, agent types, sessions or reviews behind it;
@@ -14,7 +15,7 @@ import { resolveModel, sonnetSaving } from './pricing.mjs';
 
 const MIN_MODEL_SHARE = 0.05;
 const TOP = 3;
-const NOT_ESTIMABLE = 'cannot be estimated in advance; `/limit-lens:fix compare` measures it after a few days.';
+const NOT_ESTIMABLE = 'cannot be estimated in advance; `/limit-lens:analyze compare` measures it after a few days.';
 
 // An environment variable set in the settings file's env block or in the shell running the plan.
 // With `flag`, values such as "0" and "false" count as unset.
@@ -258,6 +259,32 @@ export function applicableFixes(r, settings) {
     });
   }
   return out;
+}
+
+// The model-routing rule: asked first, whenever agents spend, unless CLAUDE.md already routes
+// (the caller checks that). The skill ships with this plugin; the rule makes Claude load it every time.
+export function routingFix(r, { file, rule }) {
+  const total = r.totals.cost;
+  const agentsCost = r.agents.subagent.cost + r.agents.workflow.cost;
+  if (!total || agentsCost / total < 0.01) return null;
+  const opusAgents = sumOpus(r.agents.subagent.byModel) + sumOpus(r.agents.workflow.byModel);
+  const types = Object.create(null);
+  for (const l of [r.agents.subagent, r.agents.workflow]) for (const [t, b] of Object.entries(l.byType || {})) types[t] = (types[t] || 0) + (b.opusCost || 0);
+  return {
+    id: 'model-routing-rule',
+    finding: 'agents',
+    target: 'memory',
+    title: 'Route delegated work with the model-routing skill',
+    why: `Agents were ${pct(agentsCost, total)} of spend, ${pct(opusAgents, agentsCost)} of it on Opus. With this rule, Claude reads this plugin's model-routing guide before it starts a subagent or workflow agent, and picks Haiku, Sonnet or Opus and the effort for each task; without it, Claude reads the guide only when it decides to.`,
+    kind: 'changes-work',
+    effect: 'Claude chooses a model and effort for each agent it starts and says which one; routine agent work moves off Opus, hard or risky work stays on it.',
+    contributors: top('agent type', Object.entries(types)),
+    savings: { weekly: null, basis: `It depends on which tasks move to a smaller model, so it ${NOT_ESTIMABLE}` },
+    file,
+    rule,
+    docs: `${DOCS}/memory`,
+    current: null,
+  };
 }
 
 // Habits only the user can adopt (slash commands are typed by the user).

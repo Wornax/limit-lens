@@ -2,7 +2,11 @@
 
 ## 0.3.0 (2026-10-25)
 
-- `/limit-lens:fix` opens with what is eating your limit: the biggest lenses, the biggest projects, and plugin calls outside transcripts.
+- One command, `/limit-lens:analyze`: the report, then model routing, then each settings fix, then the other suggestions, from one pass over the transcripts. It replaces `/limit-lens:fix`; `compare` and `revert` move to `/limit-lens:analyze compare` and `/limit-lens:analyze revert`.
+- Model routing as a fix: a marked three-line block in the user's `CLAUDE.md` that makes Claude read the `model-routing` guide before it starts an agent. Offered first when agents spend and `CLAUDE.md` does not route already; applied by the script with a backup; revert removes exactly that block and leaves an edited one alone.
+- `/limit-lens:report` runs only when you type it, for a read-only or shareable report, and lists the biggest projects.
+- `limit-lens analyze [--json]` on the command line; `plan` remains for scripts.
+- The plan opens with what is eating your limit: the biggest lenses, the biggest projects, and plugin calls outside transcripts.
 - Each fix is labelled "cost only" or "changes how Claude works for you", with its effect, and names its biggest contributors when the transcripts can tell: projects, agent types, sessions past 300K tokens or plugin reviews.
 - Each fix estimates its weekly saving at list prices and says how. Model fixes use the Sonnet 5.5 discount for each Opus version (half for Opus 5.5, more for older Opus). Effort and auto-compaction say they cannot be estimated in advance and point to compare. The plan says the estimates do not add up.
 - Alternatives (the security-guidance per-turn review on Sonnet, or dropped) share one question, and `apply` refuses both together.
