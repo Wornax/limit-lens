@@ -47,9 +47,9 @@ test('effort is not offered for a saved model with a negligible share of spend',
 test('auto-compaction is offered only when contexts get huge and it is not already lower', async () => {
   const r = await report();
   r.components.cacheRead = 60;
-  r.context.requestsOver200k = 0;
+  r.context.requestsOver300k = 0;
   assert.ok(!ids(applicableFixes(r, {})).includes('autocompact-300k'));
-  r.context.requestsOver200k = 50;
+  r.context.requestsOver300k = 50;
   assert.ok(ids(applicableFixes(r, {})).includes('autocompact-300k'));
   assert.ok(!ids(applicableFixes(r, { autoCompactWindow: 200000 })).includes('autocompact-300k'));
 });

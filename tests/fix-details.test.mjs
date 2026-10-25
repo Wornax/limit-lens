@@ -48,7 +48,7 @@ test('effort and auto-compaction say their savings cannot be estimated in advanc
   r.byEffort = { xhigh: { cost: 60, requests: 600 } };
   r.byModel = { 'opus-5-5': { cost: 90, requests: 900 } };
   r.components.cacheRead = 60;
-  r.context.requestsOver200k = 10;
+  r.context.requestsOver300k = 10;
   const fixes = applicableFixes(r, { modelSettings: { 'claude-opus-5-5': { effortLevel: 'xhigh' } } });
   for (const id of ['effort-high-claude-opus-5-5', 'autocompact-300k']) {
     const f = fixes.find((x) => x.id === id);
@@ -96,9 +96,34 @@ test('the plan opens with the diagnosis and asks one question per group', async 
   const firstQuestion = md.indexOf('### Question 1');
   assert.ok(diag > -1 && firstQuestion > diag, md);
   assert.match(md, /Biggest projects: proj-a/);
-  assert.match(md, /Estimated savings: up to \$20 per week/);
+  assert.match(md, /Estimated savings: about \$20 per week/);
   assert.match(md, /Changes how Claude works for you/);
   const questions = md.match(/### Question \d+/g).length;
   assert.equal(questions, fixes.length - 1); // the two review alternatives share one question
   assert.match(md, /Options: `security-review-sonnet` or `security-stop-review-off`/);
+});
+
+test('names from disk are cleaned in the plan; limit-lens review names are left as written', async () => {
+  const r = await heavyAgents();
+  r.byProject['proj`[x](y)'] = { ...r.byProject['proj-a'], cost: 90, opusAgentCost: 35 };
+  r.plugins.securityGuidance = { reviews: { stop: { count: 10, cost: 4 } }, outsideTranscriptsCost: 4 };
+  r.outside.cost = 4;
+  const md = renderPlan({ report: r, fixes: applicableFixes(r, {}), habits: [], settingsFile: 'settings.json', last: null, undo: null, warning: null });
+  assert.doesNotMatch(md, /`\[x\]\(y\)/);
+  assert.match(md, /proj__x__y_/);
+  assert.match(md, /Reviews: per-turn reviews \(\$4\.00, 10 reviews\)/);
+});
+
+test('plan --json carries the diagnosis and the questions, with names from disk cleaned', () => {
+  const { root, projects } = tempRoot();
+  const iso = (ms) => new Date(ms).toISOString();
+  writeTranscript(projects, 'my proj/s.jsonl', [assistant({ ts: iso(NOW - 3_600_000), model: 'claude-opus-5-5', usage: { output_tokens: 100_000 } })]);
+  fs.writeFileSync(path.join(root, 'settings.json'), '{"model":"opus"}');
+  const res = spawnSync(process.execPath, [CLI, 'plan', '--json', '--config-dir', root, '--now', iso(NOW)], { encoding: 'utf8' });
+  assert.equal(res.status, 0, res.stderr);
+  const plan = JSON.parse(res.stdout);
+  assert.equal(plan.diagnosis.projects[0].name, 'my_proj');
+  assert.deepEqual(plan.questions.map((q) => q.options), [['default-model-sonnet']]);
+  assert.equal(plan.fixes[0].contributors[0].name, 'my_proj');
+  assert.equal(fs.readFileSync(path.join(root, 'settings.json'), 'utf8'), '{"model":"opus"}');
 });

@@ -42,8 +42,8 @@ Each finding lists fixes that use real settings and commands, checked against th
 2. Then it lists the fixes that apply to you as settings. Each one shows:
    - whether it is "cost only" or "changes how Claude works for you", and how;
    - the setting, its current value and the new value, and why;
-   - the projects, agent types or sessions behind it;
-   - the weekly saving it estimates, and how. Effort and auto-compaction say they cannot be estimated in advance; compare measures them.
+   - the projects, agent types, sessions or plugin reviews behind it, when the transcripts can tell;
+   - the weekly saving it estimates at list prices, and how. The estimates assume one fix at a time and do not add up. Effort and auto-compaction say they cannot be estimated in advance; compare measures them.
 
    A fix is offered only when your usage shows the problem and your settings are not already that way.
 3. Claude asks one question per fix, with "Skip" first and "Show details" next. Alternatives, such as running the security-guidance per-turn review on Sonnet or dropping it, share one question, and the script refuses both together.

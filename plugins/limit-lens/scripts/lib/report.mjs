@@ -46,6 +46,7 @@ export function diagnosis(r, found) {
   const total = r.totals.cost;
   return {
     spend: total,
+    outside: r.outside?.cost || 0,
     days: r.window.days,
     lenses: found.slice(0, 3).map((f) => ({ title: f.title, share: total ? f.cost / total : 0, cost: f.cost })),
     projects: Object.entries(r.byProject || {})
@@ -86,7 +87,7 @@ function fixLines(f, indent) {
   lines.push(
     f.savings?.weekly == null
       ? `${pad}- Estimated savings: ${f.savings?.basis || 'not estimated.'}`
-      : `${pad}- Estimated savings: up to ${usd(f.savings.weekly)} per week (API-equivalent). How: ${f.savings.basis}`,
+      : `${pad}- Estimated savings: about ${usd(f.savings.weekly)} per week (API-equivalent). How: ${f.savings.basis}`,
     `${pad}- Source: ${f.docs}`,
   );
   return lines;
@@ -101,7 +102,7 @@ export function renderPlan({ report, found = [], fixes, habits, settingsFile, la
     lines.push(
       '## What is eating your limit',
       '',
-      `API-equivalent spend ${usd(d.spend)} in the last ${d.days} days (list prices; on a subscription, read dollars as a share of your limit).`,
+      `API-equivalent spend ${usd(d.spend)} in the last ${d.days} days${d.outside ? `, plus ${usd(d.outside)} of plugin calls outside transcripts` : ''} (list prices; on a subscription, read dollars as a share of your limit).`,
       '',
     );
     for (const l of d.lenses) lines.push(`- ${l.title}: ${pct(l.cost, d.spend)} (${usd(l.cost)})`);
@@ -120,6 +121,9 @@ export function renderPlan({ report, found = [], fixes, habits, settingsFile, la
       lines.push(`Options: ${q.options.map((f) => `\`${f.id}\``).join(' or ')} (alternatives: choose at most one)`, '');
     }
   });
+  if (fixes.filter((f) => f.savings?.weekly != null).length > 1) {
+    lines.push('Each estimate assumes that fix alone; fixes can save on the same requests, so the estimates do not add up.', '');
+  }
   if (habits.length) lines.push('', '## Habits (only the user can do these)', '', ...habits.map((h) => `- ${h}`));
   if (last) {
     const fixesList = last.changes.map((c) => `\`${c.fixId}\``).join(', ');

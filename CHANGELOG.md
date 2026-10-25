@@ -2,13 +2,17 @@
 
 ## 0.3.0 (2026-10-25)
 
-- `/limit-lens:fix` opens with what is eating your limit: the biggest lenses and the biggest projects.
-- Each fix is labelled "cost only" or "changes how Claude works for you", with its effect, and names its biggest contributors: projects, agent types, large-context sessions or plugin reviews.
-- Each fix estimates its weekly saving and says how; effort and auto-compaction say they cannot be estimated in advance and point to compare.
+- `/limit-lens:fix` opens with what is eating your limit: the biggest lenses, the biggest projects, and plugin calls outside transcripts.
+- Each fix is labelled "cost only" or "changes how Claude works for you", with its effect, and names its biggest contributors when the transcripts can tell: projects, agent types, sessions past 300K tokens or plugin reviews.
+- Each fix estimates its weekly saving at list prices and says how. Model fixes use the Sonnet 5.5 discount for each Opus version (half for Opus 5.5, more for older Opus). Effort and auto-compaction say they cannot be estimated in advance and point to compare. The plan says the estimates do not add up.
 - Alternatives (the security-guidance per-turn review on Sonnet, or dropped) share one question, and `apply` refuses both together.
 - Questions offer "Skip" first and "Show details" next.
-- The report attributes spend by project (main conversation and agents, Opus, high effort, requests over 200K) and lists the sessions with the most requests over 200K.
+- The security-guidance Sonnet fixes are offered only while that review runs on Opus, and the per-turn ones not at all once `ENABLE_STOP_REVIEW` is "0".
+- Auto-compaction at 300K is offered only when requests went past 300K, and not when `CLAUDE_CODE_DISABLE_1M_CONTEXT` already caps the window at 200K.
+- A variable in the shell counts like one in the settings file: `CLAUDE_CODE_SUBAGENT_MODEL` stops the agents fix, and `ANTHROPIC_MODEL`, which outranks the `model` setting, stops the default-model fix.
+- `--json` reports attribute spend by project (main conversation and agents, Opus, high effort per model, requests over 200K and 300K) and list the sessions with the most requests over 300K; projects whose cleaned names collide are added up.
 - `plan --json` adds the diagnosis and the questions, with names from disk cleaned.
+- Tests clear the settings variables a Claude Code session exports, so they see only their own fixtures.
 
 ## 0.2.0 (2026-10-25)
 

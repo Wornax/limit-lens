@@ -31,7 +31,7 @@ export function findings(r) {
       evidence.push(`Main conversations average ${tokens(r.context.avgPromptTokens)} tokens per request; ${r.context.requestsOver200k.toLocaleString('en-US')} requests were over 200K tokens.`);
     }
     const fixes = ['Run `/clear` between unrelated tasks (`/rename` first so you can `/resume` it later).'];
-    fixes.push(r.context.requestsOver200k > 0
+    fixes.push(r.context.requestsOver300k > 0
       ? 'Compact at natural breaks with `/compact`, or compact earlier automatically: `/autocompact 300k`, or `"autoCompactWindow": 300000` in settings.json.'
       : 'Compact at natural breaks with `/compact`.');
     fixes.push('Send verbose work (test runs, logs, wide searches) to a subagent so only its summary lands in the main conversation.', 'Use `/rewind` to drop a dead end instead of carrying it.');

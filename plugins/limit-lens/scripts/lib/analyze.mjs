@@ -105,7 +105,7 @@ function newReport(from, to, days) {
     fastMode: bucket(),
     startup: { cost: 0, count: 0, tokens: 0, avgTokens: 0, byKind: { main: { cost: 0, count: 0 }, subagent: { cost: 0, count: 0 }, workflow: { cost: 0, count: 0 } } },
     toolSessions: map(),
-    context: { avgPromptTokens: 0, requestsOver200k: 0, costOver200k: 0 },
+    context: { avgPromptTokens: 0, requestsOver200k: 0, costOver200k: 0, requestsOver300k: 0 },
     cache: { rebuilds: { afterIdle: { cost: 0, count: 0 }, modelSwitch: { cost: 0, count: 0 }, other: { cost: 0, count: 0 } } },
     topSessions: [],
     // Who is behind each lens, so fixes can name their biggest contributors.
@@ -171,8 +171,8 @@ export async function analyze({ projectsDirs, now = Date.now(), days = 7, from: 
     }
   }
   report.contextSessions = sessionRows
-    .filter((s) => s.requestsOver200k > 0)
-    .sort((a, b) => b.requestsOver200k - a.requestsOver200k || b.avgPromptTokens - a.avgPromptTokens)
+    .filter((s) => s.requestsOver300k > 0)
+    .sort((a, b) => b.requestsOver300k - a.requestsOver300k || b.avgPromptTokens - a.avgPromptTokens)
     .slice(0, 3)
     .map((s) => ({ ...s }));
   report.topSessions = sessionRows.sort((a, b) => b.cost - a.cost).slice(0, TOP_SESSIONS);
@@ -274,7 +274,7 @@ function readResponse(o, t, f, meta, state) {
   (entrypointSessions[entrypoint] ??= new Set()).add(sessionKey);
   if (usage.speed === 'fast') add(report, 'fastMode', c.total);
   const opus = c.priceKey.startsWith('opus');
-  const proj = (report.byProject[t.project] ??= { cost: 0, mainCost: 0, agentCost: 0, opusMainCost: 0, opusAgentCost: 0, highEffortCost: 0, requestsOver200k: 0 });
+  const proj = (report.byProject[t.project] ??= { cost: 0, mainCost: 0, agentCost: 0, opusMainCost: 0, opusAgentCost: 0, highEffortCost: 0, highEffortByModel: map(), requestsOver200k: 0, requestsOver300k: 0 });
   proj.cost += c.total;
   if (t.kind === 'main') {
     proj.mainCost += c.total;
@@ -283,7 +283,10 @@ function readResponse(o, t, f, meta, state) {
     proj.agentCost += c.total;
     if (opus) proj.opusAgentCost += c.total;
   }
-  if (effort === 'xhigh' || effort === 'max') proj.highEffortCost += c.total;
+  if (effort === 'xhigh' || effort === 'max') {
+    proj.highEffortCost += c.total;
+    proj.highEffortByModel[modelKey(c)] = (proj.highEffortByModel[modelKey(c)] || 0) + c.total;
+  }
 
   if (isFirst) {
     const setup = c.input + c.cacheWrite5m + c.cacheWrite1h;
@@ -314,6 +317,12 @@ function readResponse(o, t, f, meta, state) {
       report.context.costOver200k += c.total;
       proj.requestsOver200k += 1;
       f.over200k = (f.over200k || 0) + 1;
+    }
+    // The auto-compact fix compacts at 300K, so it only reaches requests past that.
+    if (promptTokens > 300_000) {
+      report.context.requestsOver300k += 1;
+      proj.requestsOver300k += 1;
+      f.over300k = (f.over300k || 0) + 1;
     }
     const kind = turnKind(f.turn, f.entrypoint);
     const h = f.turn.hash ? f.hashes.get(f.turn.hash) : null;
@@ -362,6 +371,7 @@ function finishTranscript(t, f, report, sessionRows) {
     avgPromptTokens: Math.round(f.promptTokens / f.requests),
     rereadCost: f.rereadCost,
     requestsOver200k: f.over200k || 0,
+    requestsOver300k: f.over300k || 0,
   });
 
   // Loops: a machine-started prompt repeated in the window. Hand-typed repeats ("continue") are not loops.

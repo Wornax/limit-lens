@@ -1,6 +1,6 @@
 # limit-lens: living plan
 
-Status line: **v0.2 done: fix, compare and revert, reviewed (11 confirmed defects fixed), 108 tests green, headless end-to-end runs pass. Pending: a person trying the interactive question flow, then the author's go-ahead to make the repo public** (2026-10-25).
+Status line: **v0.3 built: diagnosis first, per-fix contributors, weekly savings, cost-only or changes-work label, alternatives as one question, Skip first; 116 tests green, headless run passes. In review; pending: the author retrying the interactive flow, then the go-ahead to make the repo public** (2026-10-25).
 
 ## Goal
 
@@ -82,3 +82,16 @@ Decisions:
 ## v0.2 review (2026-10-25)
 
 Two finders (Opus on the settings-writing path, Sonnet on settings accuracy) with an Opus skeptic per finding: 11 confirmed, 1 refuted, all fixed with tests in `tests/review-v02.test.mjs`. A damaged `experiments.json` now stops apply and revert instead of being overwritten; `plan` shows exactly what `revert --experiment ID` restores; writes keep indentation, line endings and BOM, follow a symlinked file, keep its mode, and leave nothing behind on failure; each security-guidance fix needs its own evidence and the model fixes are skipped on third-party providers; the effort and auto-compact fixes skip environment overrides; `opusplan` is left alone; the hold fix states that held messages are not delivered.
+
+## v0.3: decide with the evidence in front of you (2026-10-25)
+
+Why: in the first interactive test of `/limit-lens:fix`, the questions showed the setting and a one-line why, but not what caused the spend, how much each fix would save, or whether it changes how Claude works. The tester answered "Apply" to all seven, including both security-guidance alternatives.
+
+Decisions:
+
+1. **Diagnosis first.** `plan` opens with "What is eating your limit": the spend for the window, the three biggest lenses with their share, and the three biggest projects, with a note that lenses overlap and that dollars are API-equivalent.
+2. **Each fix carries its evidence.** `contributors` (projects, agent types, sessions with the most requests over 200K, plugin reviews), `savings` (`weekly`, scaled from the window to 7 days, plus a `basis` sentence) and `kind` (`cost-only` or `changes-work`) with an `effect` sentence. Effort and auto-compaction have `weekly: null`: their effect depends on behaviour, so compare measures it.
+3. **Savings are upper bounds from list prices.** Model fixes save at most half of the Opus spend they move (Sonnet 5.5 lists at half of Opus 5.5); the per-turn review fixes use the plugin log's cost; the hold fix uses what peer-started turns cost.
+4. **Alternatives share one question.** Fixes with the same `group` are rendered as one question with "Options: `a` or `b`", and `apply` refuses two of them before writing anything.
+5. **Skip first.** The skill orders the options Skip, Show details, then Apply (or one option per alternative), and does not soften a "changes how Claude works" label.
+6. **Attribution in the report.** `byProject` splits spend into main and agents, Opus, high effort and requests over 200K; `contextSessions` lists the sessions with the most requests over 200K. `plan --json` adds the diagnosis and the questions, with names from disk cleaned.

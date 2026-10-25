@@ -81,7 +81,17 @@ function lookup(family, major, minor) {
 
 // Token counts come from files on disk: accept only finite, non-negative numbers below a sane ceiling.
 const MAX_TOKENS = 1e9;
-export const num = (v) => (typeof v === 'number' && Number.isFinite(v) && v >= 0 && v <= MAX_TOKENS ? v : 0);
+// The share of a request's cost saved by running it on Sonnet 5.5 instead of the model priced at `key`,
+// taken from the token kind where Sonnet saves least, so it does not overstate (0.5 for Opus 5.5).
+// Fast mode and US-only inference would save more and are not counted.
+export function sonnetSaving(key) {
+  const from = PRICES[String(key).replace(/~$/, '')];
+  if (!from) return 0;
+  const to = PRICES['sonnet-5-5'];
+  return Math.max(0, 1 - Math.max(...Object.keys(to).map((k) => to[k] / from[k])));
+}
+
+export const num = (v) =>(typeof v === 'number' && Number.isFinite(v) && v >= 0 && v <= MAX_TOKENS ? v : 0);
 
 // Split one API response's usage into list-price cost components (USD).
 export function requestCost(modelId, usage = {}) {

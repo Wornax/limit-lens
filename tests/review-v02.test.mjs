@@ -149,7 +149,7 @@ test('the effort fix is skipped under an effort environment override and never s
 test('auto-compaction is skipped when an env window or a per-model window would override it', async () => {
   const r = await report();
   r.components.cacheRead = 60;
-  r.context.requestsOver200k = 10;
+  r.context.requestsOver300k = 10;
   assert.ok(!ids(applicableFixes(r, { env: { CLAUDE_CODE_AUTO_COMPACT_WINDOW: '400000' } })).includes('autocompact-300k'));
   assert.ok(!ids(applicableFixes(r, { modelSettings: { 'claude-opus-5-5': { autoCompactWindow: 500000 } } })).includes('autocompact-300k'));
 });

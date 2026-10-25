@@ -30,11 +30,11 @@ Run plan and read its "Revert would restore" section: tell the user each setting
 2. Ask one question per "### Question N" of the plan with the AskUserQuestion tool, up to four questions per call, in the plan's order. Each question says, in short:
    - the title, and the label exactly as the plan gives it: "Cost only", or "Changes how Claude works for you" with its effect;
    - the change (setting, current value, new value);
-   - the biggest one or two contributors and the estimated savings line (or that it cannot be estimated in advance).
+   - the biggest one or two contributors, when the plan lists any, and the estimated savings line (or that it cannot be estimated in advance).
 
-   Options, in this order: "Skip" first, then "Show details", then "Apply" for a single fix. A question with alternatives ("Options: `a` or `b`") gets one option per alternative in place of "Apply", named by what it does, never both together. Do not recommend applying everything, and do not soften a "Changes how Claude works for you" label.
+   Give each question a header of at most 12 characters (for example "Fix 1") and each option a one-line description. Options, in this order: "Skip" first, then "Show details", then "Apply" for a single fix. A question with alternatives ("Options: `a` or `b`") gets one option per alternative in place of "Apply", named by what it does, with that alternative's own label, change and savings in its description; the user picks one of them or none. Do not recommend applying everything, and do not soften a "Changes how Claude works for you" label.
 3. When the user picks "Show details", show that question's full block from the plan (why, every contributor with its cost, how the savings were estimated, source), then ask that question again with "Skip" first and the apply options.
-4. If the user chose at least one fix, run apply with exactly the chosen ids. Apply asks for permission: that is the user's second check. It refuses two alternatives from the same question.
+4. After every question has been answered, if the user chose at least one fix, run apply once with exactly the chosen ids. Apply asks for permission: that is the user's second check. It refuses two alternatives from the same question.
 5. Tell the user what changed (file, settings, backup), that new settings apply to new sessions, and the habits from the plan, which are slash commands only they can type. Then say to come back after a few days of normal use with `/limit-lens:fix compare`, or `/limit-lens:fix revert` to undo.
 
 If the AskUserQuestion tool is not available, for example in a non-interactive run, list the fixes and stop without applying anything.

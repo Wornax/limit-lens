@@ -88,8 +88,16 @@ function sanitizeJson(report, anonymize) {
       s.project = projectName(s.project);
     });
   }
+  // Two folders can clean to the same name: add their numbers up instead of dropping one.
+  const merge = (into, from) => {
+    for (const [k, v] of Object.entries(from)) {
+      if (typeof v === 'number') into[k] = (into[k] || 0) + v;
+      else if (v && typeof v === 'object') merge((into[k] ??= Object.create(null)), v);
+    }
+    return into;
+  };
   const byProject = Object.create(null);
-  for (const [p, b] of Object.entries(report.byProject)) byProject[projectName(p)] = b;
+  for (const [p, b] of Object.entries(report.byProject)) merge((byProject[projectName(p)] ??= Object.create(null)), b);
   report.byProject = byProject;
   if (report.filter) report.filter.project = anonymize ? 'hidden' : clean(report.filter.project);
   if (!anonymize) return;

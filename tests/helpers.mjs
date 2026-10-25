@@ -3,6 +3,15 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 
+// Fixes also read these from the shell, and a Claude Code session exports its settings' env block:
+// clear them so tests (and the CLI they spawn) see only their own fixtures.
+for (const name of [
+  'CLAUDE_CODE_SUBAGENT_MODEL', 'CLAUDE_CODE_EFFORT_LEVEL', 'CLAUDE_CODE_AUTO_COMPACT_WINDOW',
+  'SECURITY_REVIEW_MODEL', 'SG_AGENTIC_MODEL', 'ENABLE_STOP_REVIEW',
+  'CLAUDE_CODE_USE_BEDROCK', 'CLAUDE_CODE_USE_VERTEX', 'CLAUDE_CODE_USE_FOUNDRY',
+  'ANTHROPIC_MODEL', 'CLAUDE_CODE_DISABLE_1M_CONTEXT',
+]) delete process.env[name];
+
 export const NOW = Date.parse('2026-10-25T12:00:00Z');
 export const minutesAgo = (n) => new Date(NOW - n * 60_000).toISOString();
 export const daysAgo = (n) => new Date(NOW - n * 86_400_000).toISOString();
