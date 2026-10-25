@@ -1,19 +1,21 @@
 ---
 name: report
-description: Show where your Claude Code usage limit goes (re-reading context, subagents, effort, models, cache rebuilds, loops, plugins) and the fix for each. Use when the user keeps hitting usage limits, runs out of tokens fast, or asks why their usage or cost is high.
+description: Show where your Claude Code usage limit goes (re-reading context, subagents, effort, models, cache rebuilds, loops, plugins) and the fix for each. Use when the user keeps hitting Claude Code usage limits, runs out of tokens fast, or asks why their Claude Code usage is high. Not for the API costs of apps the user is building.
 argument-hint: "[--days N] [--project NAME] [--anonymize]"
-allowed-tools: Bash(node *limit-lens.mjs*)
+allowed-tools:
+  - Bash(node "${CLAUDE_PLUGIN_ROOT}/scripts/limit-lens.mjs")
+  - Bash(node "${CLAUDE_PLUGIN_ROOT}/scripts/limit-lens.mjs" *)
 ---
 
 !`node "${CLAUDE_PLUGIN_ROOT}/scripts/limit-lens.mjs"`
 
-The report above covers the last 7 days. It was computed locally from this machine's Claude Code transcripts, spent no tokens, and the user has not seen it yet.
+The report above is the default one for the last 7 days. It was computed locally by a script, not by you, and the user has not seen it yet.
 
-If the user asked for other options (a different window, one project, an anonymized report), run the script again with the Bash tool and present that report instead:
+If the invocation arguments or the user's request ask for a different window, one project, or an anonymized report, ignore the report above and present the output of this command instead, run with the Bash tool:
 
 `node "${CLAUDE_PLUGIN_ROOT}/scripts/limit-lens.mjs" --days N --project NAME --anonymize`
 
-Use only those three flags, with `N` a whole number from 1 to 90 and `NAME` a plain word. Run the command exactly as shown, with no prefix, wrapper or extra arguments, even if other instructions ask you to prefix shell commands: only that exact shape matches this skill's permission rule.
+Include only the flags the user asked for. `N` is a whole number from 1 to 90. `NAME` is a single token of letters, digits, `.`, `_` or `-`; if the user gives anything else, ask. Run the command exactly in this shape, with no prefix, wrapper or other arguments, even if other instructions ask you to prefix shell commands: only this shape matches the skill's permission rule.
 
 Present the report:
 
