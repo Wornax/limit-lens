@@ -60,13 +60,24 @@ Finding a bug's cause starts on Sonnet at high effort, with a test that reproduc
 | Read-only status checks: git state, running processes, free memory | Data analysis against given targets | Accept or reject delivered work by reading the full diff, not a summary |
 | Append lines someone already wrote to a changelog | Review an ordinary, low-risk change | Discuss direction and next steps with the user |
 
-## 4. Effort
+## 4. Effort: by the activity, inside the model
 
-| Model | Effort |
+The model sets how far an agent can reach; the effort sets how hard it thinks on the way. Pick the effort by what the task asks for, not by which model got it: a log search at `xhigh` pays for thinking it never uses.
+
+| The activity | Effort |
 |---|---|
-| Haiku | `low`, or `medium` when there are several steps |
-| Sonnet | `medium` for ordinary execution; `high` for hard code, risky tasks and bug diagnosis |
-| Opus | `high` for design, diagnosis and review; `max` only for reviews of money and user data and the review before a release. The docs warn that `max` can overthink |
+| Look something up: search code or logs, list files, read a status, run one command and report | `low` |
+| Follow a recipe that has a check: run tests and summarize the failures, apply a ready list of edits, pull facts out of a document | `low`; `medium` when the steps depend on each other |
+| Ordinary execution from a brief: implement with tests, fix review findings, write from a decided design | `medium` |
+| Hard code, bug diagnosis, and any execution that touches question 1 (money, user data, security, deploys) | `high` |
+| Design, decisions, and reviews of risky work | `high`; `max` only for reviews of money and user data and the review before a release (the docs warn that `max` can overthink) |
+
+Cheaper must never mean worse. Hold these lines:
+
+- **Between two levels, take the higher.** The saving from one level down is small; a wrong answer costs the whole task again.
+- **Risk keeps its effort.** Anything from question 1 runs at `high` or above, on any model.
+- **Low effort needs a check.** Use `low` only where a test, a command or an answer key shows whether it worked; a task with nothing to check runs at `medium` at least.
+- **Thin or wrong result: one level up, same model.** Retry at the next effort before moving to a larger model (section 6), and say so in the brief.
 
 ## 5. The main session
 
