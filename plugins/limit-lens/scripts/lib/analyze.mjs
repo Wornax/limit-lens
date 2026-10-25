@@ -93,6 +93,7 @@ function newReport(from, to, days) {
     window: { from: new Date(from).toISOString(), to: new Date(to).toISOString(), days },
     pricesAsOf: PRICES_AS_OF,
     totals: { cost: 0, requests: 0, sessions: 0, estimatedCost: 0 },
+    activeDays: 0,
     components: { input: 0, cacheWrite5m: 0, cacheWrite1h: 0, cacheRead: 0, output: 0, thinking: 0 },
     byModel: map(),
     byEffort: map(),
@@ -114,11 +115,13 @@ function newReport(from, to, days) {
   };
 }
 
-export async function analyze({ projectsDirs, now = Date.now(), days = 7, project = null, securityLog = null } = {}) {
-  const to = typeof now === 'number' ? now : now.getTime();
-  const from = to - days * DAY;
+// The window is either the `days` before `now`, or an explicit [from, to] (used for before/after comparisons).
+export async function analyze({ projectsDirs, now = Date.now(), days = 7, from: fromArg, to: toArg, project = null, securityLog = null } = {}) {
+  const to = toArg ?? (typeof now === 'number' ? now : now.getTime());
+  const from = fromArg ?? to - days * DAY;
+  days = Math.round(((to - from) / DAY) * 10) / 10;
   const report = newReport(from, to, days);
-  const state = { from, to, report, seen: new Set(), sessions: new Set(), entrypointSessions: map(), oldest: Infinity };
+  const state = { from, to, report, seen: new Set(), sessions: new Set(), entrypointSessions: map(), oldest: Infinity, dates: new Set() };
   const sessionRows = [];
   let mainPromptTokens = 0;
 
@@ -145,6 +148,7 @@ export async function analyze({ projectsDirs, now = Date.now(), days = 7, projec
   }
 
   report.totals.sessions = state.sessions.size;
+  report.activeDays = state.dates.size;
   const mainRequests = report.mainConversation.requests;
   report.context.avgPromptTokens = mainRequests ? Math.round(mainPromptTokens / mainRequests) : 0;
   for (const lens of Object.values(report.agents)) {
@@ -251,6 +255,7 @@ function readResponse(o, t, f, meta, state) {
   f.requests += 1;
   f.rereadCost += c.cacheRead;
   sessions.add(sessionKey);
+  state.dates.add(new Date(ts).toLocaleDateString('en-CA')); // local calendar day
   report.totals.cost += c.total;
   report.totals.requests += 1;
   if (c.estimated) report.totals.estimatedCost += c.total;

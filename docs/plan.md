@@ -64,3 +64,17 @@ A Claude Code plugin (also its own marketplace) that shows where a user's usage 
 1. **Code review (one Sonnet agent):** fixed loop detection, unreadable files, untrusted transcript values, pricing edge cases, plugin log location, CLI validation, linked folders, BOM.
 2. **Five-lens adversarial workflow (Sonnet finders, Opus skeptics):** 11 confirmed, then 24 more after a resume; all fixed with regression tests (`tests/review-fixes*.test.mjs`). Highlights: JSON and Markdown name sanitizing, numeric validation, prototype lookups, plugin spend kept outside the total, rebuilds only when the cache was actually lost, retention note only when retention can be the cause, root-level `agent-*.jsonl` counted as subagents, estimated prices bucketed with `~`, advice corrected against the docs (compact before a break, MCP and tool search, effortLevel vs modelSettings on Opus 5.5, fast mode billed to usage credits, FORCE as the blunt option).
 3. **The report skill no longer uses a `!` line.** It runs the script through the Bash tool, pre-approved by `allowed-tools` pinned to the exact script path, so `--anonymize` applies before anything reaches the conversation and no user text ever reaches a shell line.
+
+## v0.2: apply fixes and measure before and after (started 2026-10-25)
+
+Goal: close the loop. `/limit-lens:fix` walks through the fixes that can be applied as settings, asks the user about each one, applies only the chosen ones, and later compares usage before and after.
+
+Decisions:
+
+1. **Only settings are applied.** Habits (`/clear`, `/compact`, `/model` at the start) are listed for the user to adopt; structural changes (shorter agents, a smaller CLAUDE.md) stay manual. Agent frontmatter edits are out of scope for v0.2.
+2. **Only documented keys, only the user settings file** (`<config dir>/settings.json`): `env.CLAUDE_CODE_SUBAGENT_MODEL`, `modelSettings.<model id>.effortLevel`, `autoCompactWindow`, `crossSessionInbound`, `fastMode`, `model`, and the security-guidance variables in `env`. A fix is offered only when the evidence supports it and the setting is not already at that value.
+3. **The script writes, not Claude.** `limit-lens.mjs apply <fix ids>` merges the keys into the JSON, refuses to touch a file that is not valid JSON, and saves a backup first. No "apply all".
+4. **Two approvals.** The user picks each fix in the conversation, and the `apply` command is not pre-approved by the skill, so Claude Code's own permission prompt shows the exact command too. The report skill's rule is narrowed to flag-only commands so it can never run `apply`.
+5. **Experiments.** Each apply records the fixes, the previous value of every key it changed, and a baseline snapshot of the 7 days before. State lives in `<config dir>/limit-lens/experiments.json`, the same place whether run from the skill or the CLI.
+6. **Before and after.** `compare` measures the time since the apply against the baseline: spend per active day and per request, and the shares of each lens. It says "too early" until there are at least 2 active days and 200 requests, and it reminds that workload differs between periods.
+7. **Undo.** `revert` restores only the keys the experiment changed, and skips any key the user has changed since.
