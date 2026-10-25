@@ -96,7 +96,7 @@ export function findings(r) {
       id: 'models',
       title: 'Most spend is on Opus',
       cost: opus,
-      evidence: [`Opus is ${pct(opus, total)} of spend (${topEntries(r.byModel, total, 4, modelName)}).`],
+      evidence: [`Opus models are ${pct(opus, total)} of spend.`],
       fixes: [
         'Start routine sessions with `/model sonnet`: Sonnet 5.5 lists at half the price of Opus 5.5. Choose at the start, since switching mid-session rebuilds the cache.',
         '`opusplan` plans on Opus and executes on Sonnet (each plan-mode toggle starts a fresh cache).',

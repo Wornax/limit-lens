@@ -18,7 +18,7 @@ export const sumCost = (map) => Object.values(map || {}).reduce((s, b) => s + (b
 // "a=$1 (10%), b=..." for the largest entries of a { key: { cost } } map.
 export function topEntries(map, whole, n = 3, label = (k) => k) {
   return Object.entries(map || {})
-    .filter(([, b]) => b.cost > 0)
+    .filter(([, b]) => b.cost > 0 && (!whole || b.cost / whole >= 0.001))
     .sort((a, b) => b[1].cost - a[1].cost)
     .slice(0, n)
     .map(([k, b]) => `${label(k)} ${pct(b.cost, whole)}`)
