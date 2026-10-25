@@ -1,6 +1,6 @@
 # limit-lens: living plan
 
-Status line: **v0.3: `/limit-lens:analyze` with a summary, text bar charts and a browser dashboard, then model routing (CLAUDE.md rule), settings fixes with "What it is" and other suggestions; three review rounds fixed, 174 tests green, headless run passes. Pending: the author trying it interactively, then the go-ahead to make the repo public** (2026-10-25).
+Status line: **v0.3 published: the repository is public (2026-10-25), installable with `claude plugin marketplace add Wornax/limit-lens` and `claude plugin install limit-lens@limit-lens`; commit emails rewritten to the GitHub noreply address before publishing. Next: share it with the community; the Anthropic directory needs an icon and a submission from the developer portal**.
 
 ## Goal
 
