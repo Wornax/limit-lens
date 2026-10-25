@@ -1,6 +1,6 @@
 # limit-lens: living plan
 
-Status line: **v0.1 built, reviewed in three rounds, 78 tests green; pending: an end-to-end run of the report skill without the `!` line (blocked by a usage limit at 03:00, 2026-10-25), then the author's go-ahead to make the repo public** (2026-10-25).
+Status line: **v0.1 done: reviewed in three rounds, 79 tests green, end-to-end runs pass (default and `--days 2 --anonymize`: no permission denials, no real names reach the model, about $0.01 each on Haiku). Pending: the author's go-ahead to make the repo public** (2026-10-25).
 
 ## Goal
 
