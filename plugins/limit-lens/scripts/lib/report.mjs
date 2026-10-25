@@ -2,7 +2,8 @@
 // conversation, so every line has to earn its tokens.
 import { usd, pct, tokens, topEntries, modelName } from './format.mjs';
 
-const ENTRYPOINT_NAMES = { cli: 'terminal', 'claude-desktop': 'desktop app', 'sdk-py': 'Python SDK', 'sdk-ts': 'TypeScript SDK' };
+const MAX_SHOWN = 6;
+const ENTRYPOINT_NAMES ={ cli: 'terminal', 'claude-desktop': 'desktop app', 'sdk-py': 'Python SDK', 'sdk-ts': 'TypeScript SDK' };
 
 // Folder and file names come from disk and can contain anything (Linux allows newlines):
 // keep only characters that cannot change the Markdown around them.
@@ -69,13 +70,17 @@ export function renderMarkdown(r, found, { anonymize = false, searched = [] } = 
 
   lines.push('## Findings', '');
   if (!found.length) lines.push('Nothing stands out: no lens crossed its threshold.', '');
-  found.forEach((f, i) => {
+  found.slice(0, MAX_SHOWN).forEach((f, i) => {
     lines.push(`### ${i + 1}. ${f.title} (${pct(f.cost, total)}, ${usd(f.cost)})`, '');
     for (const e of f.evidence) lines.push(`- ${e}`);
     lines.push('', 'Fixes:');
     f.fixes.forEach((x, j) => lines.push(`${j + 1}. ${x}`));
     lines.push(`Docs: ${f.docs.join(' · ')}`, '');
   });
+  if (found.length > MAX_SHOWN) {
+    const rest = found.slice(MAX_SHOWN).map((f) => `${f.title} (${pct(f.cost, total)})`).join(', ');
+    lines.push(`Also above its threshold: ${rest}. Run with \`--json\` for the details.`, '');
+  }
 
   if (r.topSessions.length) {
     lines.push('## Costliest sessions', '', '| Project | Session | From | Spend | Requests | Avg context | Re-read |', '| :- | :- | :- | -: | -: | -: | -: |');

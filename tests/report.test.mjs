@@ -57,6 +57,17 @@ test('a heavy report stays short enough to paste into a conversation', async () 
   assert.match(md, /Re-reading long conversations/);
 });
 
+test('findings past the sixth are named, not silently dropped', async () => {
+  const r = await analyze({ projectsDirs: [tempRoot().projects], now: NOW, days: 7, securityLog: null });
+  const many = Array.from({ length: 8 }, (_, i) => ({ id: `f${i}`, title: `Finding ${i}`, cost: 8 - i, evidence: ['e'], fixes: ['x'], docs: ['d'] }));
+  r.totals.requests = 1;
+  r.totals.cost = 100;
+  const md = renderMarkdown(r, many);
+  assert.match(md, /### 6\. Finding 5/);
+  assert.ok(!md.includes('### 7.'));
+  assert.match(md, /Also above its threshold: Finding 6 \(2\.0%\), Finding 7 \(1\.0%\)/);
+});
+
 test('an empty window says so and where it looked', async () => {
   const { projects } = tempRoot();
   const r = await analyze({ projectsDirs: [projects], now: NOW, days: 7, securityLog: null });

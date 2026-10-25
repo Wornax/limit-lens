@@ -3,10 +3,9 @@
 import { usd, pct, tokens, sumCost, topEntries, modelName } from './format.mjs';
 
 const DOCS = 'https://code.claude.com/docs/en';
-const MAX_FINDINGS = 6;
 
 // Minimum share of total spend before a lens becomes a finding.
-const THRESHOLDS = { reread: 0.25, agents: 0.2, effort: 0.3, opus: 0.6, rebuilds: 0.05, automation: 0.05, plugins: 0.01 };
+const THRESHOLDS = { reread: 0.25, agents: 0.2, effort: 0.3, opus: 0.6, rebuilds: 0.05, automation: 0.05, plugins: 0.01, startup: 0.03 };
 
 const isOpus = (k) => k.startsWith('opus');
 
@@ -162,6 +161,30 @@ export function findings(r) {
     out.push({ id: 'plugins', title: 'Plugins that call the model', cost: toolCost, evidence, fixes, docs: [`${DOCS}/plugins/overview`] });
   }
 
+  // Setup written by every new session and agent.
+  const st = r.startup;
+  if (st && share(st.cost) >= THRESHOLDS.startup) {
+    const kinds = [['sessions', st.byKind.main], ['subagents', st.byKind.subagent], ['workflow agents', st.byKind.workflow]]
+      .filter(([, k]) => k.count)
+      .map(([n, k]) => `${k.count.toLocaleString('en-US')} ${n}`)
+      .join(', ');
+    out.push({
+      id: 'startup',
+      title: 'Setup written by every new session and agent',
+      cost: st.cost,
+      evidence: [
+        `${kinds} started in this window, each writing about ${tokens(st.avgTokens)} tokens of setup (system prompt, tools, CLAUDE.md, memory, skill descriptions) before doing any work: ${usd(st.cost)} (${pct(st.cost, total)}).`,
+      ],
+      fixes: [
+        'Run `/context` to see what loads at startup; `/memory` opens the CLAUDE.md and memory files.',
+        'Keep CLAUDE.md short (the docs suggest under 200 lines) and move instructions for specific workflows into skills, which load only when used.',
+        'Disable MCP servers you are not using in `/mcp`, and remove plugins and skills you do not use: their listings load into every session and agent.',
+        'Prefer fewer agents doing more each over many tiny ones; the built-in Explore and Plan agents start without your CLAUDE.md files.',
+      ],
+      docs: [`${DOCS}/costs#reduce-token-usage`, `${DOCS}/context-window`],
+    });
+  }
+
   // Fast mode.
   if (r.fastMode.cost > 0) {
     out.push({
@@ -174,5 +197,5 @@ export function findings(r) {
     });
   }
 
-  return out.sort((a, b) => b.cost - a.cost).slice(0, MAX_FINDINGS);
+  return out.sort((a, b) => b.cost - a.cost);
 }

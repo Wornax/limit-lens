@@ -92,6 +92,7 @@ function newReport(from, to, days) {
     loops: { cost: 0, requests: 0, runs: 0, sessions: 0 },
     agents: { subagent: agentLens(), workflow: agentLens() },
     fastMode: bucket(),
+    startup: { cost: 0, count: 0, tokens: 0, avgTokens: 0, byKind: { main: { cost: 0, count: 0 }, subagent: { cost: 0, count: 0 }, workflow: { cost: 0, count: 0 } } },
     toolSessions: map(),
     context: { avgPromptTokens: 0, requestsOver200k: 0, costOver200k: 0 },
     cache: { rebuilds: { afterIdle: { cost: 0, count: 0 }, modelSwitch: { cost: 0, count: 0 }, other: { cost: 0, count: 0 } } },
@@ -138,6 +139,8 @@ export async function analyze({ projectsDirs, now = Date.now(), days = 7, projec
     delete lens.promptTokens;
   }
   for (const [ep, set] of Object.entries(entrypointSessions)) report.byEntrypoint[ep].sessions = set.size;
+  report.startup.avgTokens = report.startup.count ? Math.round(report.startup.tokens / report.startup.count) : 0;
+  delete report.startup.tokens;
   report.topSessions = sessionRows.sort((a, b) => b.cost - a.cost).slice(0, TOP_SESSIONS);
 
   if (securityLog && project) {
@@ -190,6 +193,9 @@ async function readTranscript(t, f, { from, to, report, seen, sessions, entrypoi
     const usage = msg?.usage;
     if (!usage || !msg.model || msg.model === '<synthetic>') continue;
     const ts = Date.parse(o.timestamp);
+    // The transcript's first response writes the setup (system prompt, tools, CLAUDE.md, memory, skill list).
+    const isFirst = !f.sawResponse;
+    f.sawResponse = true;
     if (!(ts >= from && ts <= to)) continue;
     const id = msg.id || o.requestId;
     if (id) {
@@ -219,6 +225,14 @@ async function readTranscript(t, f, { from, to, report, seen, sessions, entrypoi
 
     const created = usage.cache_creation_input_tokens || 0;
     const promptTokens = (usage.input_tokens || 0) + (usage.cache_read_input_tokens || 0) + created;
+    if (isFirst) {
+      const setup = c.input + c.cacheWrite5m + c.cacheWrite1h;
+      report.startup.cost += setup;
+      report.startup.count += 1;
+      report.startup.tokens += (usage.input_tokens || 0) + created;
+      report.startup.byKind[t.kind].cost += setup;
+      report.startup.byKind[t.kind].count += 1;
+    }
     if (f.prevTs !== null && created >= REBUILD_MIN_TOKENS && created >= REBUILD_MIN_SHARE * promptTokens) {
       const kind = msg.model !== f.prevModel ? 'modelSwitch' : ts - f.prevTs > f.ttlMs ? 'afterIdle' : 'other';
       report.cache.rebuilds[kind].cost += c.cacheWrite5m + c.cacheWrite1h;
