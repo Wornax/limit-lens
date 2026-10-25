@@ -57,7 +57,7 @@ function option(f, maxSaving, withTitle) {
   const who = kinds.map((k) => `<dt>${esc(CONTRIBUTORS[k] || k)}</dt><dd>${f.contributors.filter((c) => c.kind === k)
     .map((c) => `${esc(contributorName(c))} <span class="muted">${esc(usd(c.cost))}${c.detail ? `, ${esc(c.detail)}` : ''}</span>`).join('<br>')}</dd>`).join('');
   const saving = f.savings?.weekly == null
-    ? `<dd><span class="muted">Measured after a few days with <code>/limit-xray:analyze compare</code>.</span> ${rich(f.savings?.basis || '')}</dd>`
+    ? `<dd>${rich(f.savings?.basis || '')}</dd>`
     : `<dd>${barList([{ label: 'per week', cost: f.savings.weekly, value: `about ${usd(f.savings.weekly)}` }], maxSaving, 'saving')}<span class="muted">${rich(f.savings.basis)}</span></dd>`;
   const costOnly = f.kind === 'cost-only';
   return `<div class="option">
@@ -158,6 +158,7 @@ a { color: var(--ink-2); }
 .hero-label { color: var(--ink-2); font-weight: 600; margin: 0; }
 .hero-value { font-size: 56px; line-height: 1.05; font-weight: 650; margin: 0; }
 .next { margin-top: 10px; padding-top: 12px; border-top: 1px solid var(--grid); color: var(--ink-2); }
+.next code { white-space: nowrap; }
 .tiles { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 12px; margin: 12px 0; }
 .tile-label { color: var(--ink-2); font-size: 14px; margin: 0; }
 .tile-value { font-size: 32px; font-weight: 600; line-height: 1.2; margin: 2px 0 10px; }
